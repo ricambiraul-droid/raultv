@@ -146,7 +146,7 @@ function rewriteM3U8(text,base,channelId,idx){
  app.use("/static",express.static(path.join(__dirname,"static")));
  app.use("/static",express.static(path.join(__dirname,"public")));
  app.use(getRouter(iface));
- app.get("/health",(req,res)=>res.json({ok:true,version:"14.0.0",manifest:`${PUBLIC_URL}/manifest.json`}));
+ app.get("/health",(req,res)=>res.json({ok:true,version:"14.3.0",manifest:`${PUBLIC_URL}/manifest.json`}));
 
 
   // Punct de intrare stabil. Daca serverul cerut e mort, comuta singur pe altul.

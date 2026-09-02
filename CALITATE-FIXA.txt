@@ -1,0 +1,66 @@
+RaulTV v14.2 — CE COMUTA SI CE NU
+
+=== CINE SCHIMBA CE ===
+
+In MOD=simplu (implicit), addonul NU comuta nimic. Iti da un link,
+playerul il reda. Traficul video nici macar nu trece pe la server.
+
+Ce POATE parea comutare:
+
+  "Auto (recomandat)" = masterul playlist.
+  Playerul schimba singur calitatea in functie de conexiune (ABR).
+  Imaginea se inmoaie si se limpezeste la loc. Nu e addonul - e
+  comportamentul normal al oricarui flux HLS.
+
+  Serverele numerotate cu rezolutie (1080p, 720p) sunt FIXE.
+  Odata ales, playerul ramane acolo. Nu comuta nimic.
+
+Comutarea reala intre servere exista DOAR in MOD=proxy, unde ai si
+FAILOVER=0 s-o opresti. Pe simplu nu se aplica.
+
+=== DACA VREI CALITATE COMPLET FIXA ===
+
+In .env (sau in Render -> Environment):
+
+  AUTO=0
+
+Ascunde intrarea "Auto" cand exista rezolutii fixe. Ramai doar cu
+calitati fixe, deci playerul nu mai are de unde comuta.
+
+  AUTO=1 (implicit)          AUTO=0
+    SERVER 1 . Auto            SERVER 1 . 1080p
+    SERVER 2 . 1080p           SERVER 2 . 720p
+    SERVER 3 . 720p
+
+Masterul se pastreaza totusi cand e SINGURA optiune - de exemplu la
+Pro TV, unde copiii sunt semnati cu token si nu pot fi expusi separat.
+Altfel ai ramane fara niciun server.
+
+=== TOATE COMUTATOARELE DE CALITATE ===
+
+  AUTO=0        fara "Auto", doar calitati fixe
+  REZOLUTII=0   fara desfacere in rezolutii, doar linkul original (ca v12.8)
+  SCANARE=0     fara scanare la pornire (pornire mai rapida, un server per link)
+  MOD=proxy     failover + reincercare segmente, dar mult mai greu
+
+=== DESPRE BUFFER ===
+
+Un addon Stremio NU poate controla bufferul. Nu exista camp in protocol
+pentru asta. Cat preincarca playerul inainte sa porneasca e decizia
+aplicatiei Stremio.
+
+Ce influenteaza practic:
+  - "Auto" porneste de la calitate mica si urca. Porneste repede.
+  - Rezolutia fixa 1080p trebuie sa adune date la bitrate mare inainte
+    sa afiseze ceva. Pe conexiune slaba, exact asta se blocheaza.
+
+Deci daca vrei pornire lina, foloseste Auto. Daca vrei calitate garantata,
+foloseste rezolutia fixa si accepta o asteptare mai lunga la start.
+
+Reglajele de buffer se fac in Stremio: Settings -> Player.
+
+=== DESPRE 4K ===
+
+Nu exista posturi romanesti in 4K pe surse publice. In toata Romania
+sunt sase canale 4K, toate cu abonament, si niciunul nu e Pro TV sau
+Antena. Niciun buffer nu poate incarca o rezolutie care nu se transmite.

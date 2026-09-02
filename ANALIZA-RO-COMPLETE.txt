@@ -1,0 +1,77 @@
+ANALIZA "RaulTV v12.2 RO-Complete" — ce am luat si ce nu
+
+Cea mai buna dintre cele trei versiuni primite. Are o idee reala pe care
+n-o aveam: GHID DE PROGRAME.
+
+=== CE AM PRELUAT: EPG (v14.3) ===
+
+Setezi EPG_URL in .env cu un fisier XMLTV si fiecare canal arata ce
+ruleaza acum:
+
+   Pro TV
+      Acum: Știrile Pro TV · Pro TV · LIVE · 3 servere · calități: 1080p, 720p
+
+Ghiduri gata facute: https://github.com/iptv-org/epg
+Se pot pune mai multe, separate prin virgula.
+
+Am implementat-o altfel in doua privinte importante:
+
+1) FUSUL ORAR. In versiunea primita, ora din XMLTV era citita ignorand
+   fusul:
+
+     XMLTV spune:        20260902180000 +0300   (18:00 ora Romaniei)
+     Codul interpreta:   18:00 UTC
+     Corect:             15:00 UTC
+     >>> ghid decalat cu 3 ore
+
+   La mine fusul se scade corect. Verificat: cu trei emisiuni suprapuse,
+   se alege exact cea care ruleaza acum, nu cea trecuta sau urmatoarea.
+
+2) INCARCARE IN FUNDAL. Acolo, EPG-ul si sondarea calitatii se fac
+   inainte ca prima cerere de catalog sa raspunda:
+
+     c.servers = await Promise.all(c.servers.map(probeHLS));   // in load()
+
+   Cu ~280 de fluxuri x 5 secunde timeout, prima deschidere asteapta
+   dupa toate. Pe Render, dupa trezire, Stremio da timeout inainte sa
+   primeasca lista. E exact eroarea pe care am facut-o eu in v11.1 si
+   din cauza careia nu puteai rula addonul.
+
+   La mine EPG-ul si scanarea ruleaza in fundal. Addonul raspunde din
+   prima secunda; ghidul apare cand e gata.
+
+Potrivirea pe tvg-id ignora sufixele: "ProTV.ro@SD" din playlist se
+leaga corect de "ProTV.ro" din ghid.
+
+=== CE NU AM PRELUAT: canalele "fantoma" ===
+
+Versiunea aceea adauga fortat in catalog:
+
+   Pro TV, Prima TV, Antena 1, Digi24,
+   Digi Sport 1-4, Digi World, Digi Life, Digi Animal World
+
+README-ul ei recunoaste sincer ce se intampla: daca nu gaseste un stream,
+"canalul ramane vizibil in catalog cu 0 servere".
+
+Pentru Digi Sport 1-4, Digi World, Digi Life si Digi Animal World nu
+exista streamuri in sursele publice - sunt canale cu abonament. Deci ele
+apar in lista, dar la apasare nu se intampla nimic.
+
+Prefer sa nu le afisez deloc decat sa te pun sa dai click pe canale goale
+si sa te intrebi ce ai gresit.
+
+Nota: autorul are dreptate cand spune ca nu a bagat URL-uri tokenizate
+doar ca sa arate "Server 1". Si link-ul catre issue-ul iptv-org #48643,
+unde o sursa Prima TV a fost respinsa fiindca URL-ul avea token temporar,
+confirma exact problema pe care am reparat-o eu in v14.1: linkurile cu
+token expira si blocheaza redarea.
+
+=== CE MAI RAMANE NEPRELUAT ===
+
+notWebReady:false (gresit pentru fluxuri live), 2 surse fata de 12,
+fara paginare, fara Moldova, fara marcaj geoblocare, fara lista proprie,
+fara reimprospatare care pastreaza lista veche la esec.
+
+=== INSTALARE ===
+Manifestul NU s-a schimbat. Urci pe GitHub, Render redeployeaza.
+EPG-ul e OPTIONAL - fara EPG_URL, totul merge exact ca inainte.

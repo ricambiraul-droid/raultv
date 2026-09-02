@@ -1,4 +1,4 @@
-RAULTV BEE DOOM — v14.0
+RAULTV BEE DOOM — v14.3
 
 Addon Stremio pentru posturi TV din Romania si Italia, construit din
 liste publice gratuite (iptv-org, Free-TV, hmlendea).

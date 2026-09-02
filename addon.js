@@ -25,6 +25,17 @@ const MOD=String(process.env.MOD||"simplu").toLowerCase();
 // pana repornesti serverul - pe Render, asta putea insemna zile.
 const REFRESH_MIN=Number(process.env.REFRESH_MIN||30);
 const SCANARE=String(process.env.SCANARE??"1")!=="0";
+// REZOLUTII=0 => nu mai desfacem masterul in rezolutii separate; doar linkul
+// original, ca playerul sa aleaga singur. Cea mai sigura varianta.
+const REZOLUTII=String(process.env.REZOLUTII??"1")!=="0";
+// AUTO=0 => ascunde intrarea "Auto" (masterul) cand exista rezolutii fixe.
+// Calitatea aleasa de tine ramane fixa, playerul nu mai comuta singur (ABR).
+// Masterul se pastreaza totusi cand e singura optiune, ca sa nu ramai fara nimic.
+const AUTO=String(process.env.AUTO??"1")!=="0";
+// Un link copil cu parametri in URL e aproape sigur semnat cu token care
+// expira. Il extragem la scanare, dar cand apesi tu poate fi deja mort.
+// Astea NU se expun ca servere separate - doar masterul, care ramane valabil.
+const areToken=u=>/[?&](token|hdnts|hdnea|wmsAuthSign|md5|expires|st=|e=)/i.test(String(u))||String(u).includes("?");
 const SCAN_PARALEL=Number(process.env.SCAN_PARALEL||6);
 const rezolutiiCache=new Map();   // url flux -> [{h,url}] rezolutii reale
 // Lista filtrata+sortata, tinuta minte intre paginile aceleiasi cereri.
@@ -136,6 +147,64 @@ async function probeMaster(url,headers){
  probeCache.set(url,{t:Date.now(),r});
  return r;
 }
+
+// ---------- GHID DE PROGRAME (XMLTV / EPG) ----------
+// Optional. Setezi EPG_URL in .env cu un XMLTV; canalele arata "Acum: <emisiune>".
+// Ghiduri gata facute: https://github.com/iptv-org/epg
+// Se incarca in FUNDAL - addonul merge si fara el, si nu blocheaza nimic.
+const EPG_URL=String(process.env.EPG_URL||"").trim();
+let EPG=new Map();   // idCanal -> [{t0,t1,titlu}]
+
+// XMLTV: "20260902180000 +0300". Fusul TREBUIE scazut, altfel ghidul e decalat.
+function xmltvTime(s){
+ const m=String(s).match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})?\s*([+-]\d{4})?/);
+ if(!m)return NaN;
+ let t=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+(m[6]||0));
+ if(m[7]){
+  const semn=m[7][0]==="-"?1:-1;
+  t+=semn*((+m[7].slice(1,3))*60+(+m[7].slice(3,5)))*60000;
+ }
+ return t;
+}
+// tvg-id difera intre surse ("ProTV.ro" vs "ProTV.ro@SD"). Comparam baza.
+const epgKey=id=>String(id||"").toLowerCase().replace(/@.*$/,"").trim();
+
+async function loadEPG(){
+ if(!EPG_URL)return;
+ const vrem=new Set(channels.map(c=>epgKey(c.tvgId)).filter(Boolean));
+ const acum=Date.now(), harta=new Map();
+ for(const u of EPG_URL.split(",").map(x=>x.trim()).filter(Boolean)){
+  try{
+   const r=await fetch(u,{headers:{"User-Agent":UA}});
+   if(!r.ok)throw new Error(`HTTP ${r.status}`);
+   const xml=await r.text();
+   let n=0;
+   for(const m of xml.matchAll(/<programme\s+([^>]*)>([\s\S]*?)<\/programme>/g)){
+    const ch=(m[1].match(/channel="([^"]*)"/)||[])[1];
+    const k=epgKey(ch);
+    if(!k||!vrem.has(k))continue;
+    const t1=xmltvTime((m[1].match(/stop="([^"]*)"/)||[])[1]);
+    if(!(t1>acum))continue;                       // trecut, nu ne trebuie
+    const t0=xmltvTime((m[1].match(/start="([^"]*)"/)||[])[1]);
+    const titlu=(m[2].match(/<title[^>]*>([\s\S]*?)<\/title>/)||[])[1];
+    if(!titlu)continue;
+    if(!harta.has(k))harta.set(k,[]);
+    harta.get(k).push({t0,t1,titlu:titlu.replace(/<[^>]*>/g,"").replace(/&amp;/g,"&").trim()});
+    n++;
+   }
+   console.log(`EPG ${u}: ${n} emisiuni pentru ${harta.size} canale`);
+  }catch(e){console.warn(`EPG ${u}: ${e.message}`);}
+ }
+ for(const v of harta.values())v.sort((a,b)=>a.t0-b.t0);
+ EPG=harta;
+}
+function acumLa(tvgId){
+ const l=EPG.get(epgKey(tvgId)); if(!l||!l.length)return "";
+ const t=Date.now();
+ const p=l.find(x=>x.t0<=t&&t<x.t1);
+ return p?`Acum: ${p.titlu}`:"";
+}
+
 function hLabel(h){
  if(h>=2160)return "4K";
  if(h>=1440)return "1440p";
@@ -201,7 +270,7 @@ function isRomanian(c){
  const n=baseName(c.rawName).toLowerCase(); return RO_NAMES.some(x=>n.includes(x));
 }
 async function fetchSource(s){
- const r=await fetch(s.url,{headers:{"User-Agent":"RaulTV/14.0"}});
+ const r=await fetch(s.url,{headers:{"User-Agent":"RaulTV/14.3"}});
  if(!r.ok)throw new Error(`${s.name}: HTTP ${r.status}`);
  let a=parse(await r.text(),s.name); if(s.forceCountry)a=a.map(x=>({...x,forcedCountry:s.forceCountry}));
  a=a.filter(x=>matchesFilter(x,s.filter));
@@ -325,7 +394,7 @@ async function loadChannels(){
  }
  catalogCache.clear();
  channels=noi;
- console.log(`RaulTV v14.0: ${channels.length} posturi, ${channels.reduce((n,c)=>n+c.variants.length,0)} streamuri`);
+ console.log(`RaulTV v14.3: ${channels.length} posturi, ${channels.reduce((n,c)=>n+c.variants.length,0)} streamuri`);
 }
 function streamObjects(c){
  const valid=c.variants.filter(v=>/^https?:\/\//i.test(v.url||"")).slice(0,12);
@@ -360,7 +429,8 @@ function meta(c){
      if(!libere&&nyt&&!ngeo)      nota=" · ⚠ doar link YouTube, nu merge in Stremio";
      else if(!libere&&ngeo)       nota=` · ⚠ doar din ${c.country}`;
      else if(libere<v.length)     nota=` · ${libere} din ${v.length} servere merg din afara ${c.country}`;
-     return `${c.name} · LIVE · ${v.length} servere · calități: ${[...new Set(v.map(x=>x.label))].join(", ")||"Auto"}${nota}`;
+     const prog=acumLa(c.tvgId);
+     return [prog,`${c.name} · LIVE · ${v.length} servere · calități: ${[...new Set(v.map(x=>x.label))].join(", ")||"Auto"}${nota}`].filter(Boolean).join(" · ");
    })()
  };
 }
@@ -422,7 +492,7 @@ function categoryOf(c){
 async function main(){
  // v9.2: serverul trebuie să poată porni chiar dacă internetul / playlisturile întârzie.
  loadRating();
- loadPromise=loadChannels().then(r=>{ setTimeout(()=>scanFundal().catch(e=>console.warn("scanare:",e.message)),1500); return r; }).catch(e=>{lastLoadError=e;console.error("[LOAD ERROR]",e&&e.stack||e);});
+ loadPromise=loadChannels().then(r=>{ setTimeout(()=>{scanFundal().catch(e=>console.warn("scanare:",e.message));loadEPG().catch(e=>console.warn("EPG:",e.message));},1500); return r; }).catch(e=>{lastLoadError=e;console.error("[LOAD ERROR]",e&&e.stack||e);});
 
  // Reimprospatare periodica, in fundal. Daca reincarcarea esueaza, PASTRAM
  // canalele vechi - mai bine o lista invechita decat una goala.
@@ -434,6 +504,7 @@ async function main(){
     rezolutiiCache.clear();
     console.log(`[REFRESH] reincarcat: ${inainte} -> ${channels.length} posturi`);
     scanFundal().catch(e=>console.warn("scanare:",e.message));
+    loadEPG().catch(e=>console.warn("EPG:",e.message));
    }catch(e){
     console.warn(`[REFRESH] esuat (${e.message}); pastrez cele ${inainte} posturi existente`);
    }
@@ -455,7 +526,7 @@ async function main(){
    {name:"search",isRequired:false},{name:"skip",isRequired:false}
   ]}))
  ];
- const manifest={id:process.env.ADDON_ID||"org.raultv.iptv.v104",version:"14.0.0",name:"RaulTV BEE DOOM",description:"RaulTV BEE DOOM v14.0 · randuri pe categorii",
+ const manifest={id:process.env.ADDON_ID||"org.raultv.iptv.v104",version:"14.3.0",name:"RaulTV BEE DOOM",description:"RaulTV BEE DOOM v14.3 · ghid de programe",
   behaviorHints:{configurable:false,p2p:false,adult:false},
   logo:`${PUBLIC_URL}/static/logo.svg`,resources:["catalog","meta","stream"],types:["tv"],idPrefixes:["raultv_"],catalogs};
  const b=new addonBuilder(manifest);
@@ -529,12 +600,13 @@ async function main(){
    const out=[];
    base.forEach(v=>{
     const rends=rezolutiiCache.get(v.url);
-    if(rends&&rends.length>1){
-     // Scanat: fiecare rezolutie devine un server separat, cu link DIRECT.
+    if(REZOLUTII&&rends&&rends.length>1&&!rends.some(r=>areToken(r.url))){
+     // MASTERUL PRIMUL: e cel mai sigur, nu expira, si playerul face ABR.
+     if(AUTO)out.push({h:9999,q:"Auto",url:v.url,v});
+     // Apoi rezolutiile fixe, pentru cine vrea sa forteze o calitate.
      rends.forEach(r=>out.push({h:r.h,q:hLabel(r.h),url:r.url,v}));
-     // Si masterul intreg, daca vrei sa aleaga playerul.
-     out.push({h:-1,q:"Auto",url:v.url,v});
     }else{
+     if(rends&&rends.length>1)console.log(`[SKIP] ${c.name}: rezolutii cu token, servesc masterul`);
      // Inca nescanat sau flux fara variante: linkul asa cum e.
      const q=v.label||"Auto";
      out.push({h:/4K/i.test(q)?2160:/1440/.test(q)?1440:/1080/.test(q)?1080:/720|HD/i.test(q)?720:/576/.test(q)?576:/480/.test(q)?480:0,
@@ -546,7 +618,7 @@ async function main(){
    // ramana navigabila cu telecomanda, dar sa ai totusi rezerve daca unul pica.
    const nrPe=new Map(), filtrat=[];
    for(const s of out){
-    const k=s.q;
+    const k=s.h===9999?`auto`:s.q;
     const n=(nrPe.get(k)||0);
     if(n>=PE_REZOLUTIE)continue;
     nrPe.set(k,n+1); filtrat.push(s);
@@ -554,13 +626,14 @@ async function main(){
    }
    const simple=filtrat.map((s,i)=>{
     const avert=s.v.yt?" • YouTube, nu merge in Stremio":(s.v.geo?` • doar din ${c.country}`:"");
+    const et=s.h===9999?"Auto (recomandat)":s.q;
     const st={
-      name:`RaulTV\n${s.q}`,
-      title:`SERVER ${i+1}${i===0?" ⭐ BEST":""} • ${s.q}${avert}\n${s.v.source}`,
+      name:`RaulTV\n${et}`,
+      title:`SERVER ${i+1}${i===0?" ⭐ BEST":""} • ${et}${avert}\n${s.v.source}`,
       url:s.url,
       behaviorHints:{notWebReady:true,bingeGroup:`raultv-${c.id}`}
     };
-    if(tagOf(s.q))st.tag=[tagOf(s.q)];
+    if(s.h!==9999&&tagOf(s.q))st.tag=[tagOf(s.q)];
     if(s.v.headers&&Object.keys(s.v.headers).length)st.behaviorHints.proxyHeaders={request:s.v.headers};
     return st;
    });

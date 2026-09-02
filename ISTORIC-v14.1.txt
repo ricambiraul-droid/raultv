@@ -1,0 +1,60 @@
+RaulTV v14.1 — FIX BLOCAJE (Pro TV, Antena 1)
+
+=== CE AM STRICAT IN v13.0 ===
+
+Pana in v12.8 iti dadeam MASTERUL playlist si playerul alegea singur
+calitatea. Mergea.
+
+v13.0 a inceput sa scaneze masterele la pornire si sa-ti dea linkul
+DIRECT al fiecarei rezolutii, extras atunci si tinut in memorie.
+
+Problema: multe CDN-uri semneaza linkurile copil cu un token care expira
+in cateva minute:
+
+   1080.m3u8?hdnts=exp=1788353000~hmac=abc123
+
+Masterul ramane valabil oricat. Copilul nu. Cand apesi tu, tokenul e
+deja mort si streamul ingheata.
+
+Pro TV si Antena 1 sunt primele scanate, fiind primele la audienta.
+Deci exact ele erau cele mai afectate.
+
+=== FIX ===
+
+1) MASTERUL E ACUM PRIMUL, nu ultimul.
+   SERVER 1 = "Auto (recomandat)" = exact ce primeai in v12.8.
+   Rezolutiile fixe vin dupa, pentru cine vrea sa forteze o calitate.
+
+2) LINKURILE CU TOKEN NU MAI SUNT EXPUSE SEPARAT.
+   Daca un copil are parametri in URL (token, hdnts, expires, hmac...),
+   rezolutiile nu se mai desfac deloc pentru acel canal - se serveste
+   doar masterul.
+
+TEST:
+   Pro TV   (copii cu token)  -> 1 server: masterul
+   Antena 1 (copii curati)    -> SERVER 1 Auto + 1080p + 720p
+
+3) COMUTATOR DE SIGURANTA
+   In .env:  REZOLUTII=0
+   Opreste complet desfacerea in rezolutii. Primesti doar linkurile
+   originale, ca in v12.8. Foloseste-l daca mai apar blocaje.
+
+=== DESPRE "NU AI ADAUGAT NIMIC IN PLUS LA SERVERE" ===
+
+Ai dreptate. Sursele adaugate in v13.1 si v13.2 sunt pentru MOLDOVA
+(countries/md.m3u si streams/md.m3u). Pentru Romania nu am adaugat
+nimic, fiindca foloseam deja toate cele cinci liste care exista:
+
+   iptv-org streams/ro.m3u      (bruta, multi-server)
+   iptv-org countries/ro.m3u
+   iptv-org languages/ron.m3u
+   Free-TV playlist_romania
+   hmlendea ro.m3u
+
+Nu mai exista o a sasea. Numarul de servere pentru Pro TV depinde de
+cate linkuri distincte contin listele astea, nu de codul addonului.
+
+=== INSTALARE ===
+Manifestul NU s-a schimbat fata de 14.0. Urci pe GitHub, Render
+redeployeaza, si Stremio ia versiunea noua singur.
+Nu trebuie sa reinstalezi addonul.
