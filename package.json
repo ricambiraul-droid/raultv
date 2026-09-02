@@ -1,0 +1,19 @@
+{
+  "name": "raultv-bee-doom-v10-4-meta-fix",
+  "version": "12.8.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node -c addon.js && node -c server.js && node -c serverless.js",
+    "test-linkuri": "node verifica-linkuri.js",
+    "publica": "node publica.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "stremio-addon-sdk": "^1.6.10",
+    "express": "^4.21.2"
+  }
+}

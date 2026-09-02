@@ -1,0 +1,83 @@
+ISTORIC RAULTV — ce s-a schimbat si de ce
+
+Condensat din README-urile separate de la fiecare versiune. Alea au fost
+sterse: ajunsesera 13 documente care spuneau lucruri care nu mai erau
+adevarate, inclusiv ca addonul nu merge de pe TV (reparat in v12.3).
+
+--- v12.6  instalare ---
+Scripturile suprascriau canale.m3u si rating.json la actualizare, fara
+avertisment. Acum sunt salvate automat ca .salvat. Ghid INSTALARE.txt.
+
+--- v12.5  publicare ---
+Script pentru publicarea in Community Addons, cu verificari care te opresc
+daca adresa e locala, nu e https, sau ID-ul contine numar de versiune.
+ADDON_ID devine configurabil.
+
+--- v12.4  marcaj geoblocare ---
+Sursele marcau restrictiile in nume ([Geo-blocked], Ⓖ) dar baseName() le
+stergea. Acum se vad in lista si pe fiecare server.
+
+--- v12.3  retea locala si gazduire ---
+Serverul asculta pe 0.0.0.0 si scrie adresa de folosit pe TV. serverless.js
+reparat. Bug vechi: /static/ se servea din folderul "public", dar logoul e
+in "static", deci logoul addonului dadea 404 de cand exista proiectul.
+
+--- v12.2  mod simplu ---
+Cel mai important. Addonul devenise prea greu de folosit: la fiecare
+deschidere de canal facea pana la 20 de descarcari paralele si trecea tot
+video-ul prin proxy. Modul simplu da linkul direct playerului, ca la Kodi.
+1ms si zero cereri de retea. Devine implicit. Sursa globala index.m3u,
+cea mai lenta, devine optionala.
+
+--- v12.1  rabdare la incarcare ---
+Un server lent era tratat ca unul mort. Serverul ALES primeste acum 3
+incercari x 20s; rezervele o singura incercare rapida. FAILOVER=0 opreste
+comutarea automata, ca sa poti testa un server anume.
+
+--- v12.0  catalog paginat ---
+Catalogul trimitea TOATE canalele la fiecare cerere. Stremio incerca sa
+incarce sute de logouri simultan. Acum 100 pe pagina, cu skip.
+
+--- v11.9  subtitrari ---
+Alegerea unei rezolutii pierdea pistele de subtitrare, fiindca se servea
+doar playlistul copil. Acum se reconstruieste un master redus care le
+pastreaza. (Bug introdus in v11.1.)
+
+--- v11.8  doar Romania si Italia ---
+Scos randul Documentare adaugat in v11.7, si sursa lui.
+
+--- v11.6  ordonare dupa audienta ---
+rating.json, cu cifre Kantar Media iulie 2026. Cele mai vizionate primele.
+
+--- v11.5  failover ---
+Comutare automata pe alt server cand cel cerut e mort, pastrand rezolutia
+cea mai apropiata. Reincercarea segmentelor.
+
+--- v11.4  tester linkuri ---
+TESTEAZA-LINKURI.bat: verifica linkurile din canale.m3u si spune care
+traiesc si care sunt mastere cu rezolutii inauntru.
+
+--- v11.3  lista proprie ---
+canale.m3u si M3U_URL erau promise in fisierele de configurare inca de la
+v10.4, dar niciun cod nu le citea. Acum linkurile tale nu se mai pierd.
+
+--- v11.2  grupare reparata ---
+Sursele folosesc formate diferite de tvg-id: "ProTV.ro" vs "ProTV.ro@SD".
+Erau tratate ca doua canale diferite, deci Pro TV aparea de doua ori,
+fiecare cu jumatate din servere. canonicalChannelKey() exista din v10.2
+dar nu era apelata nicaieri.
+
+--- v11.1  rezolutii din master ---
+Un link .m3u8 poate fi un master care contine mai multe rezolutii. Erau
+tratate ca un singur server. Acum se desfac. (Relevant doar in MOD=proxy.)
+
+--- v11.0  lista de servere ---
+Catalogul returna cate un card SEPARAT pentru fiecare server, deci un canal
+cu 12 servere ocupa 12 pozitii. Acum un card per canal, cu serverele in
+dreapta.
+
+--- v10.5  bug-uri critice ---
+Variabila `channels` nu era declarata nicaieri: orice incarcare esuata sau
+lenta producea ReferenceError si eroare 500 in Stremio. RO_IDS si RO_NAMES
+erau folosite dar nedefinite. Filtrele din SOURCES erau scrise dar ignorate,
+deci se descarca integral indexul global de zeci de mii de canale.

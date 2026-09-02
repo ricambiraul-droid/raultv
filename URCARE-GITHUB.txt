@@ -1,0 +1,100 @@
+CUM URCI ADDONUL PE GITHUB SI RENDER
+
+Nu ai nevoie sa stii Git. Se face din browser, tragand fisiere in pagina.
+Prima data dureaza 20-30 de minute. Dupa aceea nu mai atingi nimic.
+
+===========================================================
+PARTEA 1 — GITHUB (unde sta codul)
+===========================================================
+
+1. Intra pe https://github.com si fa-ti cont gratuit.
+
+2. Sus in dreapta, semnul + -> "New repository"
+
+3. Completezi:
+     Repository name:  raultv
+     Public sau Private: ORICARE merge. Render se conecteaza la
+       amandoua daca te loghezi cu contul de GitHub.
+     NU bifa "Add a README file" - lasa gol.
+   Apoi butonul verde "Create repository".
+
+4. Pe pagina care apare, cauta linkul:
+     "uploading an existing file"
+   (e in mijloc, in textul mic)
+
+5. DESCHIDE FOLDERUL cu addonul dezarhivat. Selecteaza TOT ce e in el
+   (Ctrl+A) si TRAGE cu mouse-ul in pagina GitHub.
+
+   ATENTIE: selectezi CONTINUTUL folderului, nu folderul in sine.
+   Trebuie sa vezi addon.js, server.js, package.json etc. urcandu-se.
+   Daca urci folderul, Render nu va gasi package.json.
+
+6. Jos, butonul verde "Commit changes".
+
+Gata partea 1. Fisierul .gitignore din pachet se ocupa singur sa NU
+urce .env, node_modules si fisierele .salvat.
+
+===========================================================
+PARTEA 2 — RENDER (unde ruleaza)
+===========================================================
+
+1. Intra pe https://render.com
+   Apasa "Get Started" si alege "Sign in with GitHub".
+   Asa nu mai faci alt cont si Render iti vede direct codul.
+
+2. Butonul "New +" -> "Web Service"
+
+3. Iti arata lista repository-urilor tale. Alegi "raultv" -> "Connect"
+
+4. Render citeste singur fisierul render.yaml si completeaza:
+     Build Command:  npm install
+     Start Command:  node server.js
+     Instance Type:  Free
+   Verifica doar ca zice Free, apoi "Create Web Service".
+
+5. Astepti primul deploy, cateva minute. Cand termina, sus pe pagina
+   apare adresa ta, ceva de genul:
+     https://raultv-a4f2.onrender.com
+
+===========================================================
+PARTEA 3 — PASUL PE CARE IL UITA TOATA LUMEA
+===========================================================
+
+Trebuie sa-i spui addonului care e propria lui adresa, altfel logoul
+si (in MOD=proxy) linkurile ar arata spre 127.0.0.1.
+
+1. In Render, meniul din stanga -> "Environment"
+2. "Add Environment Variable"
+3. Key:    PUBLIC_URL
+   Value:  https://raultv-a4f2.onrender.com
+           (adresa TA, exact, fara / la final)
+4. Save. Render reporneste singur.
+
+Optional, daca vrei sa-l si publici mai tarziu, adauga si:
+   Key: ADDON_ID    Value: org.raultv.iptv
+
+===========================================================
+ADRESA FINALA
+===========================================================
+Asta e ce dai prietenului tau:
+
+   https://raultv-a4f2.onrender.com/manifest.json
+
+Testeaz-o intai tu, intr-un browser. Daca vezi text JSON care incepe
+cu {"id":"org.raultv... atunci merge.
+
+===========================================================
+CAND MODIFICI CEVA MAI TARZIU
+===========================================================
+Pe GitHub: intri in repository -> "Add file" -> "Upload files" ->
+tragi fisierele modificate -> Commit changes.
+Render observa singur si redeployeaza. Nu faci nimic acolo.
+
+===========================================================
+DE STIUT
+===========================================================
+Planul gratuit ADOARME dupa ~15 minute fara trafic. Prima deschidere
+dupa pauza dureaza vreo 30 de secunde. Nu e stricat, se trezeste.
+
+Setarile din .env NU se urca (le blocheaza .gitignore). Tot ce vrei
+sa configurezi pui in Render, la Environment, cu acelasi nume.

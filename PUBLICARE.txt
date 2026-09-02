@@ -1,0 +1,101 @@
+CUM AJUNGE ADDONUL IN LISTA DIN STREMIO
+
+Sunt trei "liste" diferite si oamenii le confunda. Clarific intai care e care.
+
+===========================================================
+1. LISTA TA PERSONALA
+===========================================================
+Addons -> Add addon -> lipesti URL-ul manifestului.
+Asta ai facut pana acum. Nu necesita nimic special.
+Se sincronizeaza intre dispozitivele tale daca esti logat cu cont Stremio.
+
+===========================================================
+2. COMMUNITY ADDONS (lista oficiala din aplicatie)
+===========================================================
+Lista prin care rasfoiesc altii, fara sa stie adresa ta.
+
+PRECONDITIE OBLIGATORIE: addonul trebuie sa fie deja gazduit public, pe
+https. Serverul central Stremio trebuie sa-l poata accesa el insusi.
+Un addon pe 127.0.0.1 sau pe IP de retea locala NU poate fi publicat.
+Vezi GAZDUIRE.txt, nivelul 3.
+
+DOUA CAI, ambele oficiale:
+
+  A) Din cod, cu scriptul din pachet:
+       set PUBLIC_URL=https://raultv-xxxx.onrender.com
+       set ADDON_ID=org.raultv.iptv
+       PUBLICA-ADDON.bat
+     Scriptul verifica intai totul si te opreste cu mesaj clar daca ceva
+     nu e in regula. Foloseste publishToCentral din SDK-ul oficial.
+
+  B) Din browser, formularul oficial Stremio:
+       https://stremio.github.io/stremio-publish-addon/index.html
+     Lipesti adresa manifestului si trimiti. Utila daca addonul nu e
+     scris cu SDK-ul Node.
+
+Dupa trimitere, verifici daca a intrat:
+  https://api.strem.io/addonscollection.json
+
+===========================================================
+3. STREMIO ADDONS (lista comunitara, separata de Stremio)
+===========================================================
+  https://stremio-addons.net
+Lista curata de comunitate, nu de Stremio. Are moderare: dupa niste abuzuri
+cu addonuri malitioase si spam, submisiile noi cer aprobare explicita.
+Poate dura zile. Optionala - nu ai nevoie de ea ca sa functioneze addonul.
+
+===========================================================
+ID-UL: REZOLVA ASTA INAINTE, NU DUPA
+===========================================================
+ID-ul tau e acum org.raultv.iptv.v104 - o ramasita de la versiunea 10.4,
+desi esti la 12.4.
+
+Local nu conteaza. Publicat, devine identitatea PERMANENTA a addonului.
+Daca il schimbi dupa ce oamenii l-au instalat, Stremio il vede ca pe un
+addon complet nou si toti utilizatorii il pierd.
+
+Scriptul de publicare refuza sa porneasca daca ID-ul contine un numar de
+versiune. Seteaza-l curat:
+     set ADDON_ID=org.raultv.iptv
+
+Atentie: schimbarea ID-ului cere si TIE sa stergi si sa reinstalezi
+addonul in Stremio. Fa-o o data, acum, inainte sa-l dea altii mai departe.
+
+===========================================================
+PROBLEME CUNOSCUTE
+===========================================================
+"too many addons published. Please try again later"
+  Limitare a serverului central Stremio, raportata de mai multi
+  dezvoltatori. Nu e vina codului tau. Reincearca mai tarziu.
+  Uneori addonul apare oricum in addonscollection.json desi ai primit
+  eroare - verifica acolo inainte sa reincerci.
+
+Addonul nu apare in aplicatie desi publicarea a reusit
+  Propagarea nu e instantanee. Asteapta si reporneste Stremio.
+
+Publicarea esueaza fara mesaj clar
+  Cel mai probabil adresa nu e accesibila din exterior. Testeaz-o de pe
+  telefon, pe date mobile, nu pe Wi-Fi-ul tau.
+
+===========================================================
+INAINTE SA PUBLICI: MERITA?
+===========================================================
+Iti spun sincer, nu ca sa te descurajez.
+
+Publicarea inseamna un angajament:
+  - Oamenii il instaleaza si se asteapta sa mearga. Daca serverul cade
+    sau planul gratuit expira, addonul lor moare.
+  - Planul gratuit Render adoarme dupa inactivitate. Prima deschidere
+    dupa pauza dureaza ~30 de secunde. Utilizatorii vor crede ca e stricat.
+  - Linkurile IPTV publice mor constant. Tu ai testerul si canale.m3u ca
+    sa le repari. Ei nu au nimic - doar un addon care nu merge.
+  - Geoblocarea: majoritatea utilizatorilor din afara Romaniei vor vedea
+    lista dar nu vor putea reda nimic.
+  - Devii responsabil de ce contine. Cat timp folosesti doar sursele
+    agregate esti pe teren curat, dar orice adaugi manual in canale.m3u
+    ajunge la toata lumea.
+
+Pentru un prieten sau doi, e mult mai simplu sa le dai direct adresa
+manifestului. Merge la fel de bine, fara niciun angajament. Publicarea
+in Community Addons are sens abia daca vrei sa intretii addonul serios,
+pe termen lung, pentru straini.

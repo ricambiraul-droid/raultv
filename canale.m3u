@@ -1,0 +1,28 @@
+#EXTM3U
+# ===================================================================
+#  LISTA TA PROPRIE DE SERVERE
+# ===================================================================
+# Citita la fiecare pornire. Are PRIORITATE fata de sursele publice:
+# la aceeasi rezolutie, serverul tau apare primul. In Stremio se
+# recunoaste dupa sursa "* Lista mea".
+#
+# tvg-id decide cu ce canal se grupeaza. Acelasi id ca sursele publice
+# => server IN PLUS la canalul existent, nu un canal separat.
+# Sufixele nu conteaza: "RealitateaPlus.ro" = "RealitateaPlus.ro@SD"
+#
+# Daca linkul e master playlist, rezolutiile dinauntru se desfac
+# automat in servere separate. Nu le scrii tu.
+# ===================================================================
+
+# --- Realitatea Plus: 3 candidati, toti ACTIVI ---
+# Ruleaza TESTEAZA-LINKURI.bat ca sa vezi care traiesc.
+# Sterge liniile care dau eroare.
+
+#EXTINF:-1 tvg-id="RealitateaPlus.ro",Realitatea Plus (edge)
+https://edge.realitatea.net/realitatea/plus_fq/playlist.m3u8
+#EXTINF:-1 tvg-id="RealitateaPlus.ro",Realitatea Plus (stream)
+https://stream.realitatea.net/realitatea/plus_fq/playlist.m3u8
+#EXTINF:-1 tvg-id="RealitateaPlus.ro",Realitatea Plus (livestream)
+http://livestream.realitatea.net/livestream/liverealitatea.stream/chunklist.m3u8
+
+# --- Adauga aici serverele tale ---

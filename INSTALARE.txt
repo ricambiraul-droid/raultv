@@ -1,0 +1,122 @@
+CUM INSTALEZI RAULTV — PAS CU PAS
+
+===========================================================
+INAINTE DE TOATE: NODE.JS
+===========================================================
+Addonul e un program Node.js. Fara el nu porneste.
+
+Verifica daca il ai: apasa Windows+R, scrie cmd, Enter, apoi scrie:
+     node -v
+
+Daca raspunde ceva de genul "v22.11.0", il ai. Treci mai departe.
+Daca zice ca nu recunoaste comanda, instaleaza-l de la:
+     https://nodejs.org
+Alege versiunea LTS. Instalare normala, Next-Next-Finish.
+Dupa instalare INCHIDE si redeschide fereastra cmd, altfel tot nu-l vede.
+
+===========================================================
+PASUL 1 — DEZARHIVEAZA CORECT
+===========================================================
+Asta e greseala numarul unu si strica totul.
+
+NU deschide arhiva si NU da dublu-click pe .bat din interiorul ei.
+Windows si WinRAR iti arata continutul fara sa-l extraga cu adevarat.
+Scriptul porneste, nu gaseste restul fisierelor si crapa.
+
+CORECT:
+  - click dreapta pe zip -> "Extract All" / "Extrage tot"
+  - sau in WinRAR: butonul "Extract To"
+  - alege un loc normal, de exemplu Desktop
+
+Dupa extragere trebuie sa vezi un folder cu multe fisiere in el:
+addon.js, server.js, package.json, canale.m3u, rating.json si BAT-urile.
+Daca vezi doar cateva, extragerea nu a mers.
+
+===========================================================
+PASUL 2 — PORNESTE
+===========================================================
+In folderul extras, dublu-click pe unul din doua:
+
+  PORNESTE-RAULTV.bat        - normal, doar pe calculatorul asta
+  PORNESTE-PENTRU-TV.bat     - vizibil si de pe TV si telefon
+
+Prima pornire dureaza un minut: se descarca dependentele (npm install).
+La urmatoarele e instant.
+
+Ce vezi daca a mers:
+     RaulTV pornit.
+     Pe calculatorul asta:
+        http://127.0.0.1:7000/manifest.json
+
+Cu PORNESTE-PENTRU-TV.bat apare in plus si adresa cu IP-ul tau real.
+
+LASA FEREASTRA DESCHISA. Daca o inchizi, serverul se opreste si addonul
+nu mai merge in Stremio. Poti s-o minimizezi.
+
+===========================================================
+PASUL 3 — ADAUGA IN STREMIO
+===========================================================
+1. Deschide Stremio
+2. Addons (icoana de puzzle, stanga sus)
+3. Butonul "Add addon" / campul de URL din dreapta sus
+4. Lipesti:  http://127.0.0.1:7000/manifest.json
+5. Install
+
+Gata. Canalele apar pe pagina principala, la RaulTV Romania si RaulTV Italia.
+
+===========================================================
+DACA ACTUALIZEZI DE PE O VERSIUNE MAI VECHE
+===========================================================
+Scripturile copiaza peste instalarea veche din:
+     C:\Users\<numele tau>\RaulTV-BEE-DOOM
+
+Fisierele tale editate sunt salvate automat inainte:
+     canale.m3u   ->  canale.m3u.salvat
+     rating.json  ->  rating.json.salvat
+
+Daca aveai servere proprii sau audiente modificate, deschide fisierele
+.salvat si copiaza inapoi ce iti trebuie DUPA ce verifici ca noua
+versiune porneste.
+
+Fisierul .env NU se suprascrie niciodata - setarile tale raman.
+
+===========================================================
+CAND TREBUIE SA REINSTALEZI ADDONUL IN STREMIO
+===========================================================
+Nu de fiecare data. Doar cand se schimba structura:
+
+  DA, sterge si adauga din nou:
+    - s-au schimbat randurile din catalog
+    - s-au schimbat ID-urile canalelor
+    - ai schimbat ADDON_ID
+
+  NU e nevoie, doar reporneste serverul:
+    - schimbari in .env
+    - editari in canale.m3u sau rating.json
+    - corectari de cod care nu ating manifestul
+
+Fiecare README-vXX.txt iti spune la final daca e nevoie sau nu.
+
+===========================================================
+PROBLEME FRECVENTE
+===========================================================
+"node nu este recunoscut"
+  Node.js nu e instalat, sau nu ai redeschis fereastra dupa instalare.
+
+Fereastra apare si dispare instant
+  Ai pornit BAT-ul din interiorul arhivei. Vezi Pasul 1.
+
+Stremio zice ca nu poate instala addonul
+  Serverul nu ruleaza. Verifica daca fereastra neagra e inca deschisa.
+  Testeaza in browser: http://127.0.0.1:7000/manifest.json
+  Daca vezi text JSON, serverul merge si problema e in Stremio.
+
+De pe TV nu se conecteaza
+  - ai pornit cu PORNESTE-PENTRU-TV.bat?
+  - ai apasat "Permite accesul" la fereastra de firewall Windows?
+  - TV-ul si calculatorul sunt pe aceeasi retea Wi-Fi?
+
+Lista e goala
+  Uita-te in fereastra neagra. Daca toate sursele dau eroare, verifica
+  internetul. Daca dau numere, canalele s-au incarcat si problema e in
+  Stremio - sterge addonul si adauga-l din nou.

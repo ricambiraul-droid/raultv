@@ -1,0 +1,159 @@
+RaulTV — CUM SA MEARGA PE TV SI SA-L POATA IMPORTA ORICINE
+
+Sunt trei niveluri. Alege in functie de cat vrei sa mearga.
+
+===========================================================
+NIVELUL 1 — PE TV SI TELEFON, LA TINE ACASA
+===========================================================
+Cel mai simplu. Nu costa nimic, functioneaza in 2 minute.
+
+1. Dublu-click pe PORNESTE-PENTRU-TV.bat
+2. Windows cere permisiune la firewall -> "Permite accesul"
+   (daca ratezi fereastra, addonul NU va fi vizibil de pe TV)
+3. In consola scrie exact adresa de folosit, ceva de genul:
+
+      De pe TV, telefon sau tableta (aceeasi retea Wi-Fi):
+         http://192.168.1.15:7000/manifest.json
+
+4. Pe TV, in Stremio: Addons -> Add addon -> lipesti adresa aceea.
+
+LIMITE, ca sa nu te surprinda:
+- Calculatorul trebuie sa fie PORNIT. Il inchizi, addonul moare.
+- Doar in reteaua ta. Din alta parte nu se vede.
+- IP-ul se poate schimba la repornirea routerului, si atunci addonul
+  din Stremio arata spre o adresa moarta.
+
+  REZOLVARE pentru IP: in setarile routerului cauta "DHCP reservation"
+  sau "IP static" si leaga IP-ul de calculatorul tau. Dupa asta nu se
+  mai schimba niciodata.
+
+===========================================================
+NIVELUL 2 — SA RAMANA IN LISTA, PE TOATE DISPOZITIVELE
+===========================================================
+Stremio sincronizeaza addonurile intre dispozitive DACA esti logat cu
+acelasi cont. Asta raspunde la "sa ramana in lista de addonuri".
+
+1. Fa-ti cont Stremio (gratuit) pe stremio.com
+2. Logheaza-te cu ACELASI cont: pe PC, pe TV, pe telefon
+3. Instaleaza addonul o singura data, de pe PC
+4. Apare singur pe TV si pe telefon
+
+ATENTIE LA CAPCANA: se sincronizeaza ADRESA, nu addonul. Daca adresa e
+http://192.168.1.15:7000, TV-ul va incerca sa se conecteze acolo si va
+merge doar cat timp esti acasa si PC-ul e pornit. Addonul RAMANE in
+lista, dar nu incarca nimic.
+
+Ca sa mearga cu adevarat de oriunde, ai nevoie de nivelul 3.
+
+===========================================================
+NIVELUL 3 — PUBLIC, SA-L POATA IMPORTA ORICINE
+===========================================================
+
+DE CE E POSIBIL ABIA ACUM:
+In MOD=proxy, TOT traficul video trecea prin serverul tau. Nu puteai
+sa-l gazduiesti nicaieri fara sa platesti lATime de banda enorma.
+In MOD=simplu, addonul serveste doar JSON - cateva kiloocteti. Linkurile
+video duc direct la difuzor. De-aia incape pe un plan gratuit.
+
+PASI (Render.com, gratuit):
+
+1. Pune tot folderul intr-un repository GitHub
+2. Pe render.com: New -> Web Service -> conectezi repository-ul
+   (fisierul render.yaml din pachet ii spune singur ce sa faca)
+3. Dupa primul deploy primesti o adresa de forma:
+      https://raultv-xxxx.onrender.com
+4. IMPORTANT: in Render -> Environment, adauga:
+      PUBLIC_URL = https://raultv-xxxx.onrender.com
+   Fara asta logoul addonului nu se incarca.
+5. Redeploy. Adresa de dat oricui:
+      https://raultv-xxxx.onrender.com/manifest.json
+
+Alternative echivalente: Railway, Fly.io, Koyeb. Toate accepta un app
+Node obisnuit si server.js merge la fel pe ele.
+
+Pentru Vercel sau Netlify Functions foloseste serverless.js (reparat in
+versiunea asta). Dar ATENTIE: serverless merge DOAR in MOD=simplu.
+
+CE TREBUIE SA STII INAINTE SA-L DAI ALTORA:
+
+- Planul gratuit Render adoarme dupa inactivitate. Prima cerere dupa
+  pauza dureaza ~30 de secunde, apoi merge normal. Nu e bug.
+
+- GEOBLOCARE: addonul merge de oriunde, dar FLUXURILE nu. Majoritatea
+  posturilor romanesti sunt restrictionate la Romania. Cineva din alta
+  tara va vedea lista dar nu va putea reda. Nu ai ce face - restrictia
+  e la difuzor.
+
+- Unele fluxuri sunt pe http, nu https. Aplicatia Stremio de desktop si
+  Android le accepta. Playerul web din browser le poate bloca (continut
+  mixt). Nu afecteaza TV-ul si telefonul.
+
+- Daca il dai public, esti tu responsabil de ce contine. Sursele
+  agregate (iptv-org, Free-TV) accepta doar fluxuri facute publice
+  intentionat de detinatorii de drepturi, deci esti pe teren curat cat
+  timp nu adaugi manual altceva in canale.m3u.
+
+===========================================================
+BUG REPARAT PE PARCURS
+===========================================================
+Serverul servea /static/ din folderul "public", dar logoul e in folderul
+"static". Deci ${PUBLIC_URL}/static/logo.svg - exact adresa pe care
+manifestul o da lui Stremio ca logo al addonului - returna 404 de cand
+exista proiectul. Acum se servesc ambele foldere.
+
+
+===========================================================
+DACA DAI LINKUL CUIVA DIN ALTA TARA
+===========================================================
+
+Addonul merge de oriunde. FLUXURILE nu. Astea sunt doua lucruri diferite
+si merita inteles inainte sa-i dai linkul cuiva si sa creada ca e stricat.
+
+Difuzorii romanesti restrictioneaza majoritatea transmisiilor la teritoriul
+Romaniei. Un prieten din Olanda va vedea lista intreaga, cu logouri si
+categorii, dar la deschidere multe canale vor da eroare. Nu e vina
+addonului si nu ai ce sa repari in cod.
+
+CAT DE MULTE? Uita-te in playlistul Free-TV: TVR 1, TVR 2, TVR 3,
+TVR Info, TVR International si Romania TV sunt TOATE marcate cu Ⓖ,
+adica geo-blocked. iptv-org marcheaza la fel, cu [Geo-blocked] in nume.
+Deci o parte serioasa din posturile mari.
+
+CE AM FACUT (v12.4):
+Marcajul exista deja in datele care treceau prin addon, dar baseName() il
+stergea. Acum e scos la suprafata, ca prietenul tau sa stie din start ce
+sa nu incerce:
+
+  Pro TV · LIVE · 2 servere · 1 din 2 servere merg din afara România
+     SERVER 1 ⭐ BEST • 1080p
+     SERVER 2 • 720p • doar din România
+
+  TVR 1 · LIVE · 1 servere · ⚠ doar din România
+     SERVER 1 ⭐ BEST • 1080p • doar din România
+
+  Euronews România · ⚠ doar link YouTube, nu merge in Stremio
+
+Deci se vede in DOUA locuri: in rezumatul canalului, inainte sa-l deschida,
+si pe fiecare server in parte.
+
+CE VA MERGE TOTUSI DIN OLANDA:
+Canalele fara marcaj. Sunt destule - posturi mai mici, canale de nisa,
+unele fluxuri alternative ale posturilor mari (vezi Pro TV mai sus: un
+server merge, unul nu). Nu pot sa-ti spun exact care fara sa le testeze
+de acolo.
+
+CE SA-I SPUI SA FACA:
+Sa se uite la rezumat inainte sa deschida. Daca scrie "doar din România",
+sa treaca la altul. Daca un canal are mai multe servere, sa le incerce pe
+cele nemarcate.
+
+DESPRE VPN:
+Da, un VPN cu iesire in Romania ar face fluxurile sa functioneze. Dar asta
+inseamna ocolirea restrictiei teritoriale pe care difuzorul a pus-o
+intentionat, si de obicei incalca termenii lui de utilizare. Iti spun ca
+sa stii cum stau lucrurile, nu ca recomandare.
+
+O ALTERNATIVA CURATA: multe posturi romanesti au aplicatii sau site-uri
+proprii care functioneaza legal pentru diaspora, unele cu abonament mic.
+Pentru cineva stabilit in Olanda, aia e varianta care chiar merge de
+fiecare data, fara sa se mai lupte cu linkuri moarte.
