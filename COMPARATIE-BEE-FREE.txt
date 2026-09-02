@@ -1,0 +1,61 @@
+ANALIZA "RaulTV-v11-BEE-Free" — ce am verificat si ce am preluat
+
+154 de linii, cod curat si usor de citit. Am testat afirmatiile din README
+pe date reale, nu doar am citit codul.
+
+=== CE AM PRELUAT DE ACOLO ===
+
+REIMPROSPATARE AUTOMATA. Singura functie pe care o avea si tu nu.
+La tine canalele se incarcau o data, la pornire; pe Render asta putea
+insemna zile cu linkuri moarte. Acum se reincarca la fiecare 30 de minute
+(REFRESH_MIN in .env).
+
+Am implementat-o mai defensiv decat acolo. Testul m-a prins cu un bug:
+daca toate sursele pica in timpul reimprospatarii, lista se golea. Acum,
+daca reincarcarea esueaza, PASTREZ canalele vechi:
+
+  [REFRESH] esuat (toate sursele au esuat); pastrez cele 802 posturi
+
+O lista invechita e infinit mai buna decat una goala.
+
+=== CE NU FUNCTIONEAZA ACOLO ===
+
+Trei afirmatii din README-ul lui nu se verifica. Test pe 4 intrari reale:
+
+1) "eliminarea automata a duplicatelor"
+   Gruparea se face dupa numele AFISAT, care include si calitatea:
+
+     pro-tv          "Pro TV"           1 server
+     pro-tv-1080p    "Pro TV (1080p)"   1 server
+     pro-tv-hd       "Pro TV HD"        1 server
+
+   Pro TV apare de trei ori. Exact bugul reparat la tine in v11.2.
+   Si tocmai el anuleaza fallback-ul: serverele raman imprastiate.
+
+2) "Server 1 / Server 2 / Server 3"
+   Codul exista, dar n-are ce numara: ignora streams/ro.m3u, singura
+   lista publica cu mai multe linkuri per canal.
+
+3) "categorisire automata"
+   Categoria se calculeaza dar ajunge doar ca TEXT in descriere. Nu
+   exista campul genres si nici extra in catalog, deci in Stremio nu
+   poti filtra pe Stiri sau Sport.
+   In plus, regexul cauta "digi24" fara spatiu, dar canalul se numeste
+   "Digi 24" - deci Digi 24 ajunge la "General", nu la "Stiri".
+
+=== CE MAI LIPSESTE ACOLO ===
+
+- LOGOURI: nu citeste tvg-logo, nu seteaza poster. Pe TV vezi patrate goale.
+- PAGINARE: trimite toate canalele deodata. Exact ce incetinea TV-ul tau.
+- HEADERE: ignora #EXTVLCOPT (Referer/User-Agent). Fluxurile care le cer pica.
+- notWebReady:false - gresit pentru fluxuri live; ar trebui true.
+- 2 surse fata de 12: fara Italia, Moldova, Free-TV si listele brute.
+- Fara rezolutii reale, fara marcaj geoblocare, fara lista proprie.
+
+=== CONCLUZIE ===
+
+Codul e mai curat decat al tau si asta e un merit real. Dar face mai
+putin, iar din cele trei functii promise in README doar numerotarea
+serverelor exista partial.
+
+Ideea buna am luat-o. Restul, nu.

@@ -2,10 +2,14 @@ const { addonBuilder } = require("stremio-addon-sdk");
 const fs=require("fs"), path=require("path");
 const PORT=Number(process.env.PORT||7000);
 const PUBLIC_URL=(process.env.PUBLIC_URL||`http://127.0.0.1:${PORT}`).replace(/\/$/,"");
-const REFRESH_MIN=Number(process.env.REFRESH_MIN||30);
 
 // Cate servere maxim per canal afisate in Stremio.
 const MAX_SERVERE=Number(process.env.MAX_SERVERE||20);
+// Pe TV derulezi cu telecomanda. O lista de 40 de servere e inutilizabila.
+// MAX_STREAMURI limiteaza cate intrari vede utilizatorul in total.
+// PE_REZOLUTIE limiteaza cate servere se arata pentru aceeasi calitate.
+const MAX_STREAMURI=Number(process.env.MAX_STREAMURI||15);
+const PE_REZOLUTIE=Number(process.env.PE_REZOLUTIE||3);
 // Cate canale trimitem intr-o pagina. Fara asta, Stremio primea toata lista
 // dintr-o data si incerca sa incarce sute de logouri simultan.
 const PAGINA=Number(process.env.PAGINA||100);
@@ -14,6 +18,15 @@ const PAGINA=Number(process.env.PAGINA||100);
 // MOD=proxy: trece prin serverul local. Da rezolutii separate, failover si
 //   subtitrari pastrate, dar e mult mai greu si poate bloca pe net slab.
 const MOD=String(process.env.MOD||"simplu").toLowerCase();
+// Scanare in FUNDAL la pornire: deschide fiecare flux o singura data si retine ce
+// rezolutii are inauntru. Asa poti alege manual calitatea, fara sa astepti nimic
+// la deschiderea canalului. Ordinea de scanare urmeaza audienta din rating.json.
+// Reincarcare periodica a listelor. Fara ea, un link care moare ramane mort
+// pana repornesti serverul - pe Render, asta putea insemna zile.
+const REFRESH_MIN=Number(process.env.REFRESH_MIN||30);
+const SCANARE=String(process.env.SCANARE??"1")!=="0";
+const SCAN_PARALEL=Number(process.env.SCAN_PARALEL||6);
+const rezolutiiCache=new Map();   // url flux -> [{h,url}] rezolutii reale
 // Lista filtrata+sortata, tinuta minte intre paginile aceleiasi cereri.
 const catalogCache=new Map();
 
@@ -31,7 +44,12 @@ const SOURCES=[
  {name:"IPTV-org IT (brut, multi-server)",url:"https://raw.githubusercontent.com/iptv-org/iptv/master/streams/it.m3u",filter:"all",forceCountry:"it"},
  {name:"IPTV-org Italia",url:"https://iptv-org.github.io/iptv/countries/it.m3u",filter:"all",forceCountry:"it"},
  {name:"Free-TV Italia",url:"https://raw.githubusercontent.com/Free-TV/IPTV/master/playlists/playlist_italy.m3u8",filter:"all",forceCountry:"it"},
- {name:"IPTV-org limba italiană",url:"https://iptv-org.github.io/iptv/languages/ita.m3u",filter:"itOnly"}
+ {name:"IPTV-org limba italiană",url:"https://iptv-org.github.io/iptv/languages/ita.m3u",filter:"itOnly"},
+ // Republica Moldova: canale in limba romana. Intra in randul România, nu separat.
+ // Filtrul mdRomanian scoate posturile rusofone (RTR, NTV, CTC, TNT, REN etc).
+ {name:"IPTV-org MD (brut, multi-server)",url:"https://raw.githubusercontent.com/iptv-org/iptv/master/streams/md.m3u",filter:"mdRomanian",forceCountry:"ro"},
+ {name:"IPTV-org Moldova",url:"https://iptv-org.github.io/iptv/countries/md.m3u",filter:"mdRomanian",forceCountry:"ro"},
+ {name:"Free-TV Moldova",url:"https://raw.githubusercontent.com/Free-TV/IPTV/master/playlists/playlist_moldova.m3u8",filter:"mdRomanian",forceCountry:"ro"}
 ]
 let channels=[];
 let loadPromise=null;
@@ -74,6 +92,37 @@ function parseMaster(text){
  }
  return out;
 }
+// Ca probeMaster, dar intoarce URL-uri ABSOLUTE, gata de dat playerului.
+async function rezolutiiAbsolute(url,headers){
+ const r=await probeMaster(url,headers);
+ return r.map(x=>{ let u=x.url; try{ u=new URL(x.url,url).href }catch{} return {h:x.height||0,bw:x.bandwidth||0,url:u}; })
+         .filter(x=>x.h>0).sort((a,b)=>b.h-a.h);
+}
+
+// Ruleaza dupa incarcare, fara sa blocheze nimic. Canalele merg din prima secunda;
+// pe masura ce scanarea avanseaza, apar si rezolutiile separate.
+async function scanFundal(){
+ if(!SCANARE||MOD==="proxy")return;
+ const ord=[...channels].sort((a,b)=>ratingOf(b)-ratingOf(a));
+ const lista=[];
+ for(const c of ord) for(const v of c.variants.slice(0,MAX_SERVERE)) lista.push(v);
+ console.log(`Scanez in fundal ${lista.length} fluxuri (intai cele mai vizionate)...`);
+ let i=0, cuVariante=0, moarte=0;
+ async function lucrator(){
+  while(i<lista.length){
+   const v=lista[i++];
+   if(rezolutiiCache.has(v.url))continue;
+   try{
+    const r=await rezolutiiAbsolute(v.url,v.headers);
+    rezolutiiCache.set(v.url,r);
+    if(r.length>1)cuVariante++;
+   }catch(e){ rezolutiiCache.set(v.url,[]); moarte++; }
+  }
+ }
+ await Promise.all(Array.from({length:SCAN_PARALEL},lucrator));
+ console.log(`Scanare gata: ${cuVariante} fluxuri au mai multe rezolutii, ${moarte} nu au raspuns.`);
+}
+
 async function probeMaster(url,headers){
  const hit=probeCache.get(url);
  if(hit && Date.now()-hit.t<PROBE_TTL) return hit.r;
@@ -133,12 +182,26 @@ const RO_NAMES=[
  "realitatea","romania tv","românia tv","trinitas","favorit","etno tv","taraf","agro tv","nasul","nașul",
  "metropola","a7tv","atomic tv","look tv","aleph news","national tv","național tv"
 ];
+// Posturi din Republica Moldova care emit in romana.
+const MD_NAMES=["jurnal tv","tv8","tv 8","moldova 1","moldova1","tvr moldova","pro tv chisinau",
+ "pro tv chișinău","n4","vocea basarabiei","accent tv","realitatea md","publika","prime tv",
+ "canal 2","canal 3","cinema 1","tvc21","gagauziya","itv","orizont","exclusiv tv","primul in moldova"];
+// Posturi din grila Moldovei care emit in rusa - nu ne intereseaza.
+const MD_EXCLUDE=/\b(rtr|ntv|ctc|tnt|ren ?tv|rbk|perv|pervyi|ru ?tv|rossiya|россия|нтв|стс)\b/i;
+function esteMoldoveanRomanesc(c){
+ const n=normTxt(baseName(c.rawName||c.name||""));
+ if(MD_EXCLUDE.test(n))return false;
+ if(MD_NAMES.some(x=>n.includes(x)))return true;
+ const id=String(c.tvgId||"").toLowerCase();
+ if(MD_EXCLUDE.test(id))return false;
+ return id.endsWith(".md")||id.endsWith(".ro");
+}
 function isRomanian(c){
  const id=(c.tvgId||"").toLowerCase(); if(RO_IDS.has(id)||id.endsWith(".ro"))return true;
  const n=baseName(c.rawName).toLowerCase(); return RO_NAMES.some(x=>n.includes(x));
 }
 async function fetchSource(s){
- const r=await fetch(s.url,{headers:{"User-Agent":"RaulTV/12.8"}});
+ const r=await fetch(s.url,{headers:{"User-Agent":"RaulTV/14.0"}});
  if(!r.ok)throw new Error(`${s.name}: HTTP ${r.status}`);
  let a=parse(await r.text(),s.name); if(s.forceCountry)a=a.map(x=>({...x,forcedCountry:s.forceCountry}));
  a=a.filter(x=>matchesFilter(x,s.filter));
@@ -148,8 +211,9 @@ async function fetchSource(s){
 function matchesFilter(c,f){
  if(!f||f==="all")return true;
  if(f==="romanian")return isRomanian(c);
+ if(f==="mdRomanian")return esteMoldoveanRomanesc(c);
  const code=countryOf(c).code;
- if(f==="roOnly")return code==="ro"||isRomanian(c);
+ if(f==="roOnly")return code==="ro"||isRomanian(c)||(code==="md"&&esteMoldoveanRomanesc(c));
  if(f==="itOnly")return code==="it";
  if(f==="roItOnly")return code==="ro"||code==="it"||isRomanian(c);
  return true;
@@ -167,6 +231,9 @@ const COUNTRY_NAMES={
  ma:"Maroc",dz:"Algeria",tn:"Tunisia",il:"Israel",sa:"Arabia Saudită",ae:"Emiratele Arabe Unite"
 };
 function countryOf(c){
+ // Moldova romanofona intra la România, nu se pierde intr-un rand separat.
+ if(String(c.tvgId||"").toLowerCase().endsWith(".md")&&esteMoldoveanRomanesc(c))
+  return {code:"ro",name:COUNTRY_NAMES.ro};
  if(c.forcedCountry){const x=c.forcedCountry;return {code:x,name:COUNTRY_NAMES[x]||x.toUpperCase()};}
  let x=String(c.countryRaw||"").trim().toLowerCase().split(/[;, ]/)[0];
  if(!x && c.tvgId){const m=String(c.tvgId).match(/\.([a-z]{2})(?:@.*)?$/i); if(m)x=m[1].toLowerCase();}
@@ -247,11 +314,18 @@ async function loadChannels(){
   const score=quality(c.rawName)-(/\[Not 24\/7\]/i.test(c.rawName)?80:0)+(c.local?5:0);
   if(!g.variants.some(v=>String(v.url).trim()===String(c.url).trim()))g.variants.push({...c,score,geo:esteGeo(c.rawName),yt:esteYoutube(c.url),label:(c.label||qLabel(score))});
  }
- catalogCache.clear();
- channels=[...groups.values()].filter(g=>g.local||g.countryCode==="ro"||g.countryCode==="it")
+ const noi=[...groups.values()].filter(g=>g.local||g.countryCode==="ro"||g.countryCode==="it")
  .map((g,i)=>({...g,id:`raultv_${cleanId(g.name)}_${i}`,variants:g.variants.sort((a,b)=>b.score-a.score)}))
  .sort((a,b)=>a.name.localeCompare(b.name,"ro"));
- console.log(`RaulTV v12.8: ${channels.length} posturi, ${channels.reduce((n,c)=>n+c.variants.length,0)} streamuri`);
+
+ // Daca toate sursele au picat dar aveam deja canale, NU le stergem.
+ // O lista invechita e infinit mai buna decat una goala.
+ if(!noi.length && channels.length){
+  throw new Error(`toate sursele au esuat; pastrez cele ${channels.length} posturi existente`);
+ }
+ catalogCache.clear();
+ channels=noi;
+ console.log(`RaulTV v14.0: ${channels.length} posturi, ${channels.reduce((n,c)=>n+c.variants.length,0)} streamuri`);
 }
 function streamObjects(c){
  const valid=c.variants.filter(v=>/^https?:\/\//i.test(v.url||"")).slice(0,12);
@@ -348,25 +422,57 @@ function categoryOf(c){
 async function main(){
  // v9.2: serverul trebuie să poată porni chiar dacă internetul / playlisturile întârzie.
  loadRating();
- loadPromise=loadChannels().catch(e=>{lastLoadError=e;console.error("[LOAD ERROR]",e&&e.stack||e);});
+ loadPromise=loadChannels().then(r=>{ setTimeout(()=>scanFundal().catch(e=>console.warn("scanare:",e.message)),1500); return r; }).catch(e=>{lastLoadError=e;console.error("[LOAD ERROR]",e&&e.stack||e);});
+
+ // Reimprospatare periodica, in fundal. Daca reincarcarea esueaza, PASTRAM
+ // canalele vechi - mai bine o lista invechita decat una goala.
+ if(REFRESH_MIN>0){
+  const t=setInterval(async()=>{
+   const inainte=channels.length;
+   try{
+    await loadChannels();
+    rezolutiiCache.clear();
+    console.log(`[REFRESH] reincarcat: ${inainte} -> ${channels.length} posturi`);
+    scanFundal().catch(e=>console.warn("scanare:",e.message));
+   }catch(e){
+    console.warn(`[REFRESH] esuat (${e.message}); pastrez cele ${inainte} posturi existente`);
+   }
+  },REFRESH_MIN*60000);
+  if(t.unref)t.unref();
+  console.log(`Reimprospatare automata la fiecare ${REFRESH_MIN} minute.`);
+ }
  // Nu blocăm inițializarea addonului pe fetch-urile externe.
- const countryRows=[["ro","România"],["it","Italia"]];
+  const countryRows=[["ro","România"],["it","Italia"]];
+ // Logica BEE: categoriile ca RANDURI separate pe ecranul principal, nu doar
+ // ca filtru. Pe telecomanda, un rand se parcurge mult mai repede decat un meniu.
+ const genRows=["Știri","Sport","Filme","Muzică","Regional"];
  const defaultCats=["TOATE CATEGORIILE","General","Știri","Sport","Filme","Documentare","Desene animate","Muzică","Religie","Lifestyle","Regional"];
- const catalogs=countryRows.map(([code,name])=>({type:"tv",id:`raultv_country_${code}`,name:`RaulTV • ${name}`,extra:[
+ const catalogs=[
+  ...countryRows.map(([code,name])=>({type:"tv",id:`raultv_country_${code}`,name:`RaulTV • ${name}`,extra:[
    {name:"search",isRequired:false},{name:"genre",options:defaultCats,isRequired:false},{name:"skip",isRequired:false}
- ]}));
- const manifest={id:process.env.ADDON_ID||"org.raultv.iptv.v104",version:"12.8.0",name:"RaulTV BEE DOOM",description:"RaulTV BEE DOOM v12.8 · pregatit pentru GitHub",
+  ]})),
+  ...genRows.map(g=>({type:"tv",id:`raultv_gen_${cleanId(g)}`,name:`RaulTV • ${g}`,extra:[
+   {name:"search",isRequired:false},{name:"skip",isRequired:false}
+  ]}))
+ ];
+ const manifest={id:process.env.ADDON_ID||"org.raultv.iptv.v104",version:"14.0.0",name:"RaulTV BEE DOOM",description:"RaulTV BEE DOOM v14.0 · randuri pe categorii",
   behaviorHints:{configurable:false,p2p:false,adult:false},
   logo:`${PUBLIC_URL}/static/logo.svg`,resources:["catalog","meta","stream"],types:["tv"],idPrefixes:["raultv_"],catalogs};
  const b=new addonBuilder(manifest);
  b.defineCatalogHandler(async ({id,extra})=>{
    if(loadPromise){await Promise.race([loadPromise,new Promise(r=>setTimeout(r,8000))]);}
-   const m=String(id||"").match(/^raultv_country_(.+)$/); if(!m)return {metas:[]};
+   const sid=String(id||"");
+   const mTara=sid.match(/^raultv_country_(.+)$/);
+   const mGen=sid.match(/^raultv_gen_(.+)$/);
+   if(!mTara&&!mGen)return {metas:[]};
+   // Randul pe categorie: numele lui e cheia; il gasim inapoi din slug.
+   const genRand=mGen?["Știri","Sport","Filme","Muzică","Regional"].find(g=>cleanId(g)===mGen[1]):null;
    const gen=extra?.genre||"", cauta=extra?.search||"";
    const cheie=`${id}|${gen}|${cauta}`;
    let a=catalogCache.get(cheie);
    if(!a){
-    a=channels.filter(c=>c.countryCode===m[1]);
+    a=mTara ? channels.filter(c=>c.countryCode===mTara[1])
+            : channels.filter(c=>categoryOf(c)===genRand);
     if(gen && gen!=="TOATE CATEGORIILE")a=a.filter(c=>categoryOf(c)===gen);
     if(cauta){const q=cauta.toLowerCase();a=a.filter(c=>c.name.toLowerCase().includes(q));}
     // Cele mai vizionate primele; cele fara audienta cunoscuta la final, alfabetic.
@@ -375,7 +481,7 @@ async function main(){
    }
    const skip=Math.max(0,Number(extra?.skip)||0);
    const pagina=a.slice(skip,skip+PAGINA);
-   console.log(`[CATALOG] ${id} gen="${gen||"toate"}" -> ${a.length} canale, trimit ${pagina.length} (de la ${skip})`);
+   console.log(`[CATALOG] ${id} -> ${a.length} canale, trimit ${pagina.length} (de la ${skip})`);
    // Un singur card per canal. Serverele apar in dreapta, la deschiderea canalului.
    return {metas:pagina.map(c=>meta(c))};
  });
@@ -420,21 +526,46 @@ async function main(){
    // MOD SIMPLU: dam linkul direct playerului, ca la Kodi. Zero cereri de retea
    // aici, deci lista de servere apare instantaneu. Playerul alege singur
    // calitatea din master (ABR) si se ocupa el de HLS.
-   const simple=base.map((v,i)=>{
-    const q=v.label||"Auto";
-    const avert=v.yt?" • YouTube, nu merge in Stremio":(v.geo?` • doar din ${c.country}`:"");
+   const out=[];
+   base.forEach(v=>{
+    const rends=rezolutiiCache.get(v.url);
+    if(rends&&rends.length>1){
+     // Scanat: fiecare rezolutie devine un server separat, cu link DIRECT.
+     rends.forEach(r=>out.push({h:r.h,q:hLabel(r.h),url:r.url,v}));
+     // Si masterul intreg, daca vrei sa aleaga playerul.
+     out.push({h:-1,q:"Auto",url:v.url,v});
+    }else{
+     // Inca nescanat sau flux fara variante: linkul asa cum e.
+     const q=v.label||"Auto";
+     out.push({h:/4K/i.test(q)?2160:/1440/.test(q)?1440:/1080/.test(q)?1080:/720|HD/i.test(q)?720:/576/.test(q)?576:/480/.test(q)?480:0,
+               q,url:v.url,v});
+    }
+   });
+   out.sort((a,b)=>b.h-a.h||(b.v.local?1:0)-(a.v.local?1:0));
+   // Pastram cel mult PE_REZOLUTIE servere pentru aceeasi calitate, ca lista sa
+   // ramana navigabila cu telecomanda, dar sa ai totusi rezerve daca unul pica.
+   const nrPe=new Map(), filtrat=[];
+   for(const s of out){
+    const k=s.q;
+    const n=(nrPe.get(k)||0);
+    if(n>=PE_REZOLUTIE)continue;
+    nrPe.set(k,n+1); filtrat.push(s);
+    if(filtrat.length>=MAX_STREAMURI)break;
+   }
+   const simple=filtrat.map((s,i)=>{
+    const avert=s.v.yt?" • YouTube, nu merge in Stremio":(s.v.geo?` • doar din ${c.country}`:"");
     const st={
-      name:`RaulTV\n${q}`,
-      title:`SERVER ${i+1}${i===0?" ⭐ BEST":""} • ${q}${avert}\n${v.source}`,
-      url:v.url,
+      name:`RaulTV\n${s.q}`,
+      title:`SERVER ${i+1}${i===0?" ⭐ BEST":""} • ${s.q}${avert}\n${s.v.source}`,
+      url:s.url,
       behaviorHints:{notWebReady:true,bingeGroup:`raultv-${c.id}`}
     };
-    if(tagOf(q))st.tag=[tagOf(q)];
-    // Unele fluxuri cer Referer / User-Agent. Stremio le poate trimite singur.
-    if(v.headers&&Object.keys(v.headers).length)st.behaviorHints.proxyHeaders={request:v.headers};
+    if(tagOf(s.q))st.tag=[tagOf(s.q)];
+    if(s.v.headers&&Object.keys(s.v.headers).length)st.behaviorHints.proxyHeaders={request:s.v.headers};
     return st;
    });
-   console.log(`[STREAM] ${c.name}: ${simple.length} servere (mod simplu, direct)`);
+   const scanate=base.filter(v=>rezolutiiCache.has(v.url)).length;
+   console.log(`[STREAM] ${c.name}: ${simple.length} servere afisate din ${out.length} gasite, ${base.length} linkuri (${scanate}/${base.length} scanate)`);
    return Promise.resolve({streams:simple});
   }
 

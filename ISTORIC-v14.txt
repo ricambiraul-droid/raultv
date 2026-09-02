@@ -1,0 +1,53 @@
+RaulTV v14.0 — RANDURI PE CATEGORII (logica BEE)
+
+=== CE S-A SCHIMBAT ===
+
+Pana acum categoriile erau un FILTRU: intrai in randul România, deschideai
+meniul de genuri, alegeai Stiri. Trei pasi, si pe telecomanda e greoi.
+
+Acum sunt RANDURI separate pe ecranul principal, ca la BEE:
+
+  RaulTV . România
+  RaulTV . Italia
+  RaulTV . Știri        <- NOU
+  RaulTV . Sport        <- NOU
+  RaulTV . Filme        <- NOU
+  RaulTV . Muzică       <- NOU
+  RaulTV . Regional     <- NOU
+
+Un rand se parcurge dintr-o apasare. Pe TV, diferenta e mare.
+
+Filtrul vechi de genuri RAMANE in randurile România si Italia, cu toate
+cele 10 categorii. Randurile noi sunt in plus, nu in loc.
+
+=== CE E DIFERIT FATA DE BEE-LOGIC ===
+
+Randurile de acolo sunt alfabetice. Ale tale sunt ordonate dupa AUDIENTA.
+
+  RaulTV . Știri:  Romania TV, Antena 3 CNN, Digi 24
+                   (178.820 / 110.130 / 57.990 telespectatori/min, Kantar)
+
+Si categorisirea e mai buna. Antena 3 CNN ajunge corect la Stiri; in
+BEE-Logic ajungea la "general", fiindca regexul lui nu o contine.
+
+=== ATENTIE: TREBUIE SA REINSTALEZI ADDONUL ===
+
+Manifestul s-a schimbat - s-au adaugat 5 randuri. Stremio NU le vede
+fara reinstalare.
+
+  1. Stremio -> Addons -> Dezinstalati RaulTV
+  2. Add addon -> https://raultv.onrender.com/manifest.json
+
+Pe TV: dupa ce reinstalezi de pe telefon sau PC cu acelasi cont, se
+sincronizeaza singur. Nu tastezi nimic cu telecomanda.
+
+=== DACA VREI ALTE CATEGORII ===
+
+In addon.js, linia:
+  const genRows=["Știri","Sport","Filme","Muzică","Regional"];
+
+Poti adauga: "Documentare", "Desene animate", "Religie", "Lifestyle",
+"General". Numele trebuie scris exact ca in defaultCats, cu diacritice.
+
+Nu exagera cu numarul: fiecare rand in plus inseamna un rand de derulat
+pe ecranul principal si mai multe cereri catre server la pornire.

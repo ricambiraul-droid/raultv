@@ -1,4 +1,4 @@
-RAULTV BEE DOOM — v12.8
+RAULTV BEE DOOM — v14.0
 
 Addon Stremio pentru posturi TV din Romania si Italia, construit din
 liste publice gratuite (iptv-org, Free-TV, hmlendea).
@@ -18,7 +18,7 @@ Detalii complete: INSTALARE.txt
 ===========================================================
 CE FACE
 ===========================================================
-- Doua randuri in catalog: RaulTV Romania si RaulTV Italia
+- Sapte randuri in catalog: România, Italia, Știri, Sport, Filme, Muzică, Regional
 - Filtrare pe gen: Stiri, Sport, Filme, Documentare, Muzica etc.
 - Canalele ordonate dupa AUDIENTA pe tara, cele mai vizionate primele
 - Mai multe servere per canal, cand sursele au linkuri distincte
@@ -65,6 +65,7 @@ UNELTE DIN PACHET
 PORNESTE-RAULTV.bat      pornire normala
 PORNESTE-PENTRU-TV.bat   pornire vizibila in reteaua locala (TV, telefon)
 TESTEAZA-LINKURI.bat     testeaza linkurile din canale.m3u si zice care traiesc
+SCANEAZA-CALITATE.bat    citeste rezolutia REALA a tuturor canalelor, gaseste HD-ul
 PUBLICA-ADDON.bat        publica addonul in Community Addons (cere gazduire)
 PORNESTE-DIAGNOSTIC.bat  pornire cu informatii suplimentare
 
@@ -101,6 +102,5 @@ pentru varianta care merge non-stop.
 ===========================================================
 INCA NEREPARATE
 ===========================================================
-- REFRESH_MIN e definit dar nefolosit: canalele se incarca o singura data,
-  la pornire. Un link care moare intre timp ramane mort pana repornesti.
-- Nu exista health check automat la pornire. Testerul e manual.
+- Nu exista health check automat la pornire. Testerul e manual
+  (SCANEAZA-CALITATE.bat si TESTEAZA-LINKURI.bat).

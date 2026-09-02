@@ -1,0 +1,80 @@
+RaulTV v13.2 — VERSIUNE FINALA PENTRU SMART TV
+
+=== CE S-A SCHIMBAT PENTRU TV ===
+
+1) LISTA DE SERVERE, NAVIGABILA CU TELECOMANDA
+   v13.0 desfacea fiecare master in rezolutii separate. Bun pe PC, dar un
+   canal cu 6 linkuri x 4 rezolutii ajungea la 30 de intrari. Pe TV, cu
+   telecomanda, era imposibil de derulat.
+
+   Acum se afiseaza cel mult 15 servere, maximum 3 pentru fiecare calitate:
+
+     SERVER 1 * BEST . 1080p     SERVER 9  . 480p
+     SERVER 2 . 1080p            SERVER 10 . 360p
+     SERVER 3 . 1080p            SERVER 11 . 360p
+     SERVER 4 . 720p             SERVER 12 . 360p
+     SERVER 5 . 720p             SERVER 13 . Auto
+     SERVER 6 . 720p             SERVER 14 . Auto
+     SERVER 7 . 480p             SERVER 15 . Auto
+     SERVER 8 . 480p
+
+   Din 30 posibile raman 15. Ai rezerve daca una pica, dar lista se
+   parcurge in cateva apasari.
+
+   Reglabil in .env:  MAX_STREAMURI=15   PE_REZOLUTIE=3
+
+2) SERVERE IN PLUS PENTRU MOLDOVA
+   Pentru Romania si Italia foloseam ambele liste iptv-org: cea curatata
+   (countries/) si cea bruta (streams/), care are mai multe linkuri per
+   canal. Pentru Moldova o foloseam doar pe cea curatata. Reparat -
+   acum e adaugata si streams/md.m3u.
+
+   Total surse: 12.
+
+=== INSTALARE PE SMART TV ===
+
+TCL, Sony, Philips, orice Google TV / Android TV:
+  1. Play Store pe televizor -> cauti "Stremio" -> instalezi
+  2. Te loghezi cu contul tau Stremio
+
+Samsung (2021+): Smart Hub -> Stremio
+LG (2020+):      LG Content Store -> Stremio
+Fire TV:         Amazon App Store -> Stremio
+Apple TV:        App Store -> Stremio
+
+=== CUM AJUNGE ADDONUL PE TV, FARA SA TASTEZI ===
+
+NU introduce adresa cu telecomanda. Foloseste sincronizarea:
+
+  1. Cont Stremio (gratuit) pe stremio.com
+  2. Pe telefon sau PC, logat cu acel cont, adaugi addonul:
+       https://raultv.onrender.com/manifest.json
+  3. Pe TV te loghezi cu ACELASI cont
+  4. Addonul apare singur
+
+=== DACA TV-UL MERGE GREU ===
+
+In Render -> Environment, adauga:
+     PAGINA = 60          (mai putine canale pe pagina)
+     MAX_STREAMURI = 10   (lista de servere mai scurta)
+
+Televizoarele au procesoare slabe. Fiecare canal din lista incarca un
+logo de pe internet; cu 100 deodata, un TV se poate impotmoli.
+
+=== DE STIUT PE TV ===
+
+PRIMA DESCHIDERE dupa o pauza lunga dureaza pana la 50 de secunde.
+Planul gratuit Render adoarme. Nu e stricat, se trezeste.
+
+GEOBLOCARE. Din afara Romaniei multe posturi nu pornesc. Serverele sunt
+marcate "doar din România" - uita-te la eticheta inainte sa apesi.
+
+ANDROID TV E CEA MAI BUNA ALEGERE. Aplicatiile Samsung si LG sunt
+aplicatii web si pot bloca fluxurile pe http simplu. Pe Android TV,
+Google TV si Fire TV problema nu exista. TCL cu Google TV = ideal.
+
+=== VERIFICARE FINALA ===
+
+Inainte sa dai adresa mai departe, deschide in browser:
+     https://raultv.onrender.com/manifest.json
+Daca vezi text care incepe cu {"id":"org.raultv... e in regula.

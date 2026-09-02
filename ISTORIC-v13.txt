@@ -1,0 +1,66 @@
+RaulTV v13.0 — ALEGERE MANUALA A CALITATII, FARA PROXY
+
+=== CE VOIAI ===
+Sa poti alege TU serverul, dar sa ai si servere de calitate mare.
+
+=== DE CE NU MERGEA PANA ACUM ===
+Alegerea rezolutiei exista doar in MOD=proxy. Acolo addonul descarca
+masterele IN MOMENTUL in care deschideai canalul - pana la 20 de
+descarcari paralele, fiecare cu timeout. De acolo veneau blocajele.
+
+In MOD=simplu am scos sondarea cu totul. Rapid, dar ai pierdut selectia:
+un singur server per link, iar playerul alegea singur calitatea.
+
+=== SOLUTIA ===
+Am mutat sondarea la PORNIRE, in fundal.
+
+Addonul deschide fiecare flux o singura data si retine ce rezolutii are
+inauntru. Cand deschizi un canal, rezolutiile sunt deja stiute: apar
+instant, iar linkurile merg DIRECT la player. Fara proxy.
+
+Ordinea de scanare urmeaza audienta din rating.json, deci posturile pe
+care le privesti tu sunt gata primele.
+
+TEST, 2 linkuri pentru acelasi canal, fiecare master cu 3 rezolutii:
+
+  Imediat dupa pornire (scanarea inca nu a rulat):
+     SERVER 1 * BEST . 1080p  ->  https://a/protv.m3u8
+     SERVER 2 . 720p          ->  https://b/protv2.m3u8
+
+  Dupa ce s-a terminat scanarea:
+     SERVER 1 * BEST . 1080p  ->  https://a/hi/1080.m3u8
+     SERVER 2 . 1080p         ->  https://b/hi/1080.m3u8
+     SERVER 3 . 720p          ->  https://a/hi/720.m3u8
+     SERVER 4 . 720p          ->  https://b/hi/720.m3u8
+     SERVER 5 . 480p          ->  https://a/hi/480.m3u8
+     SERVER 6 . 480p          ->  https://b/hi/480.m3u8
+     SERVER 7 . Auto          ->  masterul intreg
+     SERVER 8 . Auto          ->  masterul intreg
+
+  Deschidere canal: 0ms.
+
+Din 2 linkuri au iesit 8 servere. Toate sortate dupa rezolutia REALA,
+cea mai buna prima.
+
+=== IMPORTANT ===
+Addonul MERGE din prima secunda. Nu astepti scanarea. Pana se termina,
+vezi mai putine optiuni; apoi se completeaza singure.
+
+Optiunea "Auto" ramane la final: masterul intreg, daca preferi sa aleaga
+playerul in functie de conexiune.
+
+Rezolutiile sunt citite din playlist, nu din nume. Daca un canal se
+numeste "Pro TV (4K)" dar masterul are doar 1080p, vezi 1080p.
+
+=== REGLAJE (.env) ===
+SCANARE=0       opreste scanarea (pornire mai usoara, un server per link)
+SCAN_PARALEL=6  cate fluxuri se verifica deodata; urca-l daca ai net bun
+
+=== PE RENDER ===
+Scanarea ruleaza la fiecare pornire a serviciului. Planul gratuit adoarme
+dupa inactivitate, deci dupa o trezire scanarea o ia de la capat. Nu
+blocheaza nimic - addonul raspunde imediat, rezolutiile apar pe parcurs.
+
+=== INSTALARE ===
+Manifestul nu s-a schimbat. NU reinstala addonul, doar reporneste
+serverul. Pe Render: urci fisierele pe GitHub si redeployeaza singur.

@@ -1,6 +1,6 @@
 {
   "name": "raultv-bee-doom-v10-4-meta-fix",
-  "version": "12.8.0",
+  "version": "14.0.0",
   "private": true,
   "main": "server.js",
   "scripts": {

@@ -1,0 +1,64 @@
+CE CANALE MAI PUTEM ADAUGA — inventar cinstit
+
+=== ADAUGAT IN v13.1: REPUBLICA MOLDOVA ===
+
+Era o omisiune a mea. Canalele moldovenesti in limba romana existau in
+sursele pe care le foloseam deja, dar codul le arunca.
+
+De ce: filtrul roOnly verifica daca tvg-id se termina in ".ro" sau daca
+numele e intr-o lista de posturi romanesti. Un canal moldovenesc are
+"JurnalTV.md" si un nume care nu era in lista, deci pica la filtrare.
+
+Acum intra in randul România (nu rand separat), iar posturile rusofone
+din grila Moldovei sunt excluse automat.
+
+CE CASTIGI:
+  Jurnal TV, TV8, Moldova 1, TVR Moldova, Pro TV Chisinau,
+  N4, Vocea Basarabiei, Accent TV, Canal 2, Canal 3, TVC21 s.a.
+
+TVR Moldova e literalmente un canal TVR. Pro TV Chisinau e din acelasi
+grup cu Pro TV.
+
+Surse noi: iptv-org countries/md.m3u si Free-TV playlist_moldova.m3u8
+
+TEST, grila amestecata cu 8 canale moldovenesti:
+  Trecute: Jurnal TV, Moldova 1, Pro TV Chisinau, TV8, TVR Moldova
+  Taiate:  RTR Moldova, NTV Moldova, CTC Mega   (rusofone)
+
+=== CE AS MAI PUTEA ADAUGA, DACA VREI ===
+
+1) YOUTUBE OFICIAL  (efort mare, castig mare)
+   Multe posturi romanesti transmit live pe canalele lor OFICIALE de
+   YouTube: Digi24, Antena 3 CNN, Euronews România, si Realitatea de
+   cand si-a mutat streamingul acolo in 2025.
+   Sunt fluxuri publice, puse de difuzori, complet legitime.
+   Problema: Stremio nu poate reda un link YouTube prin addonul nostru.
+   Ar trebui yt-dlp instalat pe server, care extrage manifestul HLS.
+   Pe Render se poate instala. Ar recupera si canalele marcate acum
+   cu "YouTube, nu merge in Stremio".
+
+2) RADIO ROMANESC  (efort mic)
+   iptv-org are si liste de radio. S-ar putea adauga un rand separat,
+   sau un gen "Radio" in randul existent. Spune daca te intereseaza.
+
+3) CANALE REGIONALE  (deja incluse)
+   TVR Cluj, Craiova, Iasi, Timisoara, Targu-Mures sunt deja in
+   countries/ro.m3u. Le ai. Apar la genul Regional.
+
+=== CE NU POT ADAUGA, ORICAT AS VREA ===
+
+Canale cu abonament: Discovery, History, Digi World, Digi Life,
+Digi Sport, Pro Cinema, Pro TV Cinema, Antena 1 Cinema, Prima World,
+HBO, filmele si sportul in general.
+
+Nu e o limitare a codului. Sursele publice le exclud prin politica lor,
+fiindca difuzorii nu le-au facut publice. Singurele locuri unde apar
+sunt portalurile cu abonament.
+
+=== UNDE E PLAFONUL REAL ===
+
+Nu stiu inca, si nici tu. De-asta exista SCANEAZA-CALITATE.bat.
+Ruleaza-l si vezi cate canale ai la 1080p real. Daca majoritatea ies
+720p, merita cautat mai departe. Daca ies 1080p, am atins ce se poate
+din surse libere si diferenta fata de alte addonuri vine din sursa lor,
+nu din codul nostru.
