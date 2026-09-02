@@ -1,8 +1,11 @@
 {
   "name": "raultv-stremio-tv",
-  "version": "14.0.0",
+  "version": "14.1.0",
   "private": true,
   "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.js",
     "check": "node --check addon.js && node --check server.js"

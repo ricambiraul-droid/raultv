@@ -1,14 +1,11 @@
-# Gazduire gratuita pe Render.com, ca addonul sa fie accesibil de oriunde.
-# Vezi GAZDUIRE.txt pentru pasii completi.
 services:
   - type: web
-    name: raultv
+    name: raultv-stremio
     runtime: node
     plan: free
     buildCommand: npm install
-    startCommand: node server.js
+    startCommand: npm start
+    healthCheckPath: /manifest.json
     envVars:
-      - key: MOD
-        value: simplu
-      - key: PUBLIC_URL
-        sync: false   # completeaza tu cu https://raultv-xxxx.onrender.com
+      - key: NODE_VERSION
+        value: 20
