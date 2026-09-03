@@ -154,9 +154,11 @@ test('meta si stream pentru fiecare canal', async () => {
       assert.equal(prim.behaviorHints.notWebReady, true);
       assert.match(prim.title, /Server 1/, `${channel.id}: serverele sunt numerotate`);
     } else {
-      assert.equal(stream.body.streams.length, 1,
-        `${channel.id}: fără sursă trebuie doar linkul online`);
-      assert.ok(!stream.body.streams[0].url);
+      // fără sursă: căutarea pe server, apoi linkul către pagina oficială
+      assert.equal(stream.body.streams.length, 2, channel.id);
+      assert.ok(stream.body.streams[0].url.includes(`/live/${channel.id}.m3u8`),
+        `${channel.id}: trebuie oferită căutarea pe server`);
+      assert.match(stream.body.streams[0].title, /Caută fluxul pe server/);
     }
     for (const item of stream.body.streams) assert.equal(item.name, 'RaulTV');
   }
@@ -275,6 +277,38 @@ test('playlistul M3U se potrivește cu posturile din catalog', () => {
   // normalizarea nu trebuie sa confunde posturi diferite
   assert.notEqual(normalize('Digi Sport 1'), normalize('Digi Sport 11'));
   assert.equal(normalize('Brașov TV'), normalize('Brasov TV'));
+});
+
+test('extragerea fluxului din pagina oficială', () => {
+  const { extrageM3u8, scripturiCandidate } = require('./lib/resolver');
+
+  // adresă simplă în atribut HTML
+  assert.deepEqual(
+    extrageM3u8('<video src="https://cdn.ro/live/index.m3u8">', 'https://post.ro/'),
+    ['https://cdn.ro/live/index.m3u8']);
+
+  // adresă relativă, rezolvată față de pagină
+  assert.deepEqual(
+    extrageM3u8('"/hls/live.m3u8"', 'https://post.ro/live/pagina'),
+    ['https://post.ro/hls/live.m3u8']);
+
+  // adresă scăpată în JSON, cum apare în configurația playerelor
+  assert.deepEqual(
+    extrageM3u8('{"file":"https:\\/\\/edge.ro\\/a.m3u8?t=1"}', 'https://post.ro/'),
+    ['https://edge.ro/a.m3u8?t=1']);
+
+  // fără duplicate
+  assert.equal(extrageM3u8(
+    '"https://a.ro/x.m3u8" "https://a.ro/x.m3u8"', 'https://post.ro/').length, 1);
+
+  // o pagină fără flux nu produce nimic
+  assert.deepEqual(extrageM3u8('<p>fără video aici</p>', 'https://post.ro/'), []);
+
+  // doar scripturile care par legate de player
+  assert.deepEqual(
+    scripturiCandidate('<script src="/js/analytics.js"></script><script src="/js/hls-player.js"></script>',
+      'https://post.ro/'),
+    ['https://post.ro/js/hls-player.js']);
 });
 
 test('pagina de verificare și lista surselor', async () => {

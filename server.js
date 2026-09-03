@@ -8,9 +8,10 @@ const { SURSE } = require('./surse');
 const { buildPoster, buildBackground, buildLogo, ImageCache } = require('./lib/poster');
 const live = require('./lib/live');
 const m3u = require('./lib/m3u');
+const resolver = require('./lib/resolver');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.2.1';
+const VERSION = '3.3.0';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
@@ -21,6 +22,11 @@ const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 // redirectul la fel. „server" e util când vrei să schimbi o sursă fără să
 // redeschizi lista în Stremio.
 const MOD_FLUX = process.env.RAULTV_MOD_FLUX === 'server' ? 'server' : 'direct';
+
+// Pentru canalele fără sursă configurată, serverul încearcă să găsească fluxul
+// public chiar pe pagina oficială a postului, în momentul în care apeși play.
+// Se oprește cu RAULTV_AUTO=off.
+const AUTO = process.env.RAULTV_AUTO !== 'off';
 
 // ---------------------------------------------------------------------------
 // Canale
@@ -73,6 +79,8 @@ function applyPlaylist(text, origine) {
     }
     channel.url = channel.surse.length ? channel.surse[0].url : '';
   }
+
+  resortCatalogs();
 
   playlistState.stare = 'încărcat';
   playlistState.origine = origine;
@@ -141,7 +149,7 @@ function sortChannels(list) {
   });
 }
 
-const allSorted = sortChannels(channels);
+let allSorted = sortChannels(channels);
 
 const genreCatalogs = categories.map(category => ({
   type: 'tv',
@@ -152,6 +160,16 @@ const genreCatalogs = categories.map(category => ({
 }));
 
 const catalogById = new Map(genreCatalogs.map(catalog => [catalog.id, catalog]));
+
+// Sortarea depinde de ce canale au surse, iar playlistul se încarcă după
+// pornire. Fără resortare, un post căruia playlistul tocmai i-a dat trei
+// servere ar rămâne unde era, în coada listei alfabetice.
+function resortCatalogs() {
+  allSorted = sortChannels(channels);
+  for (const catalog of genreCatalogs) {
+    catalog.channels = sortChannels(channels.filter(channel => channel.category === catalog.category));
+  }
+}
 
 const MAIN_CATALOG_ID = 'raultv-toate';
 
@@ -268,11 +286,20 @@ async function streamsFor(channel, base) {
     }
   }
 
+  // Canalele fără sursă: serverul caută fluxul pe pagina oficială la play.
+  // Nu rezolvăm aici, ca lista să apară instant — căutarea se face la cerere.
+  if (AUTO && !channel.surse.length) {
+    streams.push({
+      name: 'RaulTV',
+      title: `${channel.name}\nCaută fluxul pe server`,
+      url: `${base}/live/${channel.id}.m3u8`,
+      behaviorHints: { notWebReady: true }
+    });
+  }
+
   streams.push({
     name: 'RaulTV',
-    title: channel.surse.length
-      ? `${channel.name}\nDeschide pagina oficială`
-      : `${channel.name}\nLive pe pagina oficială`,
+    title: `${channel.name}\nDeschide pagina oficială`,
     externalUrl: channel.officialPage
   });
 
@@ -451,11 +478,29 @@ function handle(req, res) {
     const channel = byId.get(liveMatch[1]);
     if (!channel) return json(req, res, 404, { error: 'Canal inexistent' });
     if (!channel.surse.length) {
-      return json(req, res, 404, {
-        error: 'Canalul nu are flux configurat',
-        paginaOficiala: channel.officialPage,
-        variabila: channel.envKey
-      });
+      if (!AUTO) {
+        return json(req, res, 404, {
+          error: 'Canalul nu are flux configurat',
+          paginaOficiala: channel.officialPage,
+          variabila: channel.envKey
+        });
+      }
+      return resolver.rezolva(channel)
+        .then(gasit => {
+          if (!gasit) {
+            return json(req, res, 404, {
+              error: 'Nu am găsit un flux public pe pagina oficială',
+              paginaOficiala: channel.officialPage,
+              variabila: channel.envKey
+            });
+          }
+          res.writeHead(302, { Location: gasit, 'Cache-Control': 'no-store', ...CORS });
+          res.end();
+        })
+        .catch(() => json(req, res, 502, {
+          error: 'Rezolvarea a eșuat',
+          paginaOficiala: channel.officialPage
+        }));
     }
 
     const sourceIndex = clampIndex(url.searchParams.get('sursa'), channel.surse.length);
@@ -674,7 +719,8 @@ buton.addEventListener('click', async function () {
       sources: channels.reduce((total, channel) => total + channel.surse.length, 0),
       categories: categories.length,
       postersCached: posterCache.size,
-      playlist: playlistState
+      playlist: playlistState,
+      auto: AUTO ? resolver.stare() : 'oprit'
     });
   }
 
@@ -764,8 +810,12 @@ if (require.main === module) {
 }
 
 module.exports = {
-  server, channels, categories, genreCatalogs, allSorted,
+  server, channels, categories, genreCatalogs, resortCatalogs,
   buildManifest, slugify, searchKey, parseExtra, selectChannels, streamsFor, metaFor,
   resolveTarget, live, m3u, loadPlaylist, playlistState,
   MAIN_CATALOG_ID, PAGE_SIZE
 };
+
+// allSorted se reconstruiește după încărcarea playlistului, deci îl expunem
+// ca proprietate calculată, nu ca valoare copiată la încărcarea modulului.
+Object.defineProperty(module.exports, 'allSorted', { get: () => allSorted });
