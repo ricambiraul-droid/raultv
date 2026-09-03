@@ -11,7 +11,7 @@ const m3u = require('./lib/m3u');
 const resolver = require('./lib/resolver');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.3.0';
+const VERSION = '3.3.1';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
