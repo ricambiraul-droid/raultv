@@ -151,7 +151,9 @@ test('meta si stream pentru fiecare canal', async () => {
       const prim = stream.body.streams[0];
       // modul implicit e „direct": adresa reală a sursei, fără hop prin addon
       assert.equal(prim.url, channel.surse[0].url, `${channel.id}: link direct`);
-      assert.equal(prim.behaviorHints.notWebReady, true);
+      // pe https curat, Stremio primește adresa direct — fără notWebReady
+      assert.ok(!prim.behaviorHints || prim.behaviorHints.notWebReady !== true,
+        `${channel.id}: https curat nu trebuie marcat notWebReady`);
       assert.match(prim.title, /Server 1/, `${channel.id}: serverele sunt numerotate`);
     } else {
       // fără sursă: căutarea pe server, apoi linkul către pagina oficială

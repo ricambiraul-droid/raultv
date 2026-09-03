@@ -11,7 +11,7 @@ const m3u = require('./lib/m3u');
 const resolver = require('./lib/resolver');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.3.1';
+const VERSION = '3.3.2';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
@@ -256,9 +256,17 @@ async function streamsFor(channel, base) {
   const streams = [];
 
   const push = (source, index, eticheta, target, rezIndex) => {
-    const hints = { notWebReady: true };
+    // notWebReady îi spune lui Stremio să nu dea adresa direct playerului, ci
+    // să o treacă prin serverul lui intern. Pentru HLS live asta încurcă
+    // degeaba, așa că îl punem doar unde chiar trebuie: la sursele pe http
+    // simplu și la cele care au nevoie de antete.
+    const hints = {};
+    const nesigur = String(target || '').startsWith('http://');
     if (source.referer) {
+      hints.notWebReady = true;
       hints.proxyHeaders = { request: { Referer: source.referer, 'User-Agent': live.UA } };
+    } else if (nesigur) {
+      hints.notWebReady = true;
     }
     streams.push({
       name: 'RaulTV',
@@ -292,8 +300,7 @@ async function streamsFor(channel, base) {
     streams.push({
       name: 'RaulTV',
       title: `${channel.name}\nCaută fluxul pe server`,
-      url: `${base}/live/${channel.id}.m3u8`,
-      behaviorHints: { notWebReady: true }
+      url: `${base}/live/${channel.id}.m3u8`
     });
   }
 
