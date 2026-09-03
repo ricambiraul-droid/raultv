@@ -159,7 +159,7 @@ Implicit, serverul încarcă la pornire indexul public **iptv-org**, proiectul
 open-source care adună fluxurile TV accesibile liber:
 
 ```
-https://iptv-org.github.io/iptv/streams/ro.m3u
+
 https://iptv-org.github.io/iptv/countries/ro.m3u
 https://iptv-org.github.io/iptv/languages/ron.m3u
 ```

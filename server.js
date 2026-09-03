@@ -11,7 +11,7 @@ const m3u = require('./lib/m3u');
 const resolver = require('./lib/resolver');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.5.0';
+const VERSION = '3.5.1';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
@@ -32,7 +32,6 @@ const AUTO = process.env.RAULTV_AUTO !== 'off';
 // adună fluxurile românești accesibile liber. Se schimbă din RAULTV_M3U_URL
 // (mai multe adrese, separate prin virgulă) sau se oprește cu valoarea "off".
 const PLAYLISTURI_IMPLICITE = [
-  'https://iptv-org.github.io/iptv/streams/ro.m3u',
   'https://iptv-org.github.io/iptv/countries/ro.m3u',
   'https://iptv-org.github.io/iptv/languages/ron.m3u'
 ];
