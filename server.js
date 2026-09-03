@@ -12,7 +12,7 @@ const resolver = require('./lib/resolver');
 const logos = require('./lib/logos');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.7.0';
+const VERSION = '3.7.1';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
@@ -938,6 +938,20 @@ buton.addEventListener('click', async function () {
       ...CORS
     });
     return res.end(req.method === 'HEAD' ? undefined : corp);
+  }
+
+  // Diagnostic pentru sigle: ce s-a descărcat, ce a picat și de ce.
+  if (path === '/sigle.json') {
+    return json(req, res, 200, {
+      sumar: logos.stare(),
+      canale: channels
+        .filter(channel => channel.logo)
+        .map(channel => ({
+          nume: channel.name,
+          logo: channel.logo,
+          stare: logos.detalii(channel.logo)
+        }))
+    });
   }
 
   if (path === '/health') {
