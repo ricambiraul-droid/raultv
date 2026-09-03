@@ -1,10 +1,10 @@
-# RaulTV România — addon Stremio v3.0
+# RaulTV România — addon Stremio v3.1
 
 **201 televiziuni românești** în **13 rubrici**, cu postere generate pe server, gândite
 pentru afișare pe Smart TV. Server HTTP fără nicio dependență externă — doar Node.js.
 
 ```
-npm test     # 17 teste
+npm test     # 25 teste
 npm start    # http://localhost:7000/manifest.json
 ```
 
@@ -75,6 +75,114 @@ pregătesc în fundal la pornire, în pași de 40 ms, ca să nu blocheze primele
 - Ordonare: canalele cu flux configurat apar primele, restul alfabetic după reguli
   românești (`Intl.Collator('ro')`).
 
+## Fluxuri: mai multe servere și mai multe rezoluții
+
+### Cum ajunge fluxul la tine
+
+Implicit, modul e **direct**: în listă apare adresa reală a sursei, iar playerul o
+deschide fără niciun hop prin addon. E cel mai robust cu playerele de pe
+televizor, care nu tratează toate redirectul la fel.
+
+```
+RAULTV_MOD_FLUX = direct   (implicit)
+RAULTV_MOD_FLUX = server
+```
+
+În modul **server**, fiecare canal primește o adresă pe serverul tău:
+
+```
+https://raultv.onrender.com/live/raultv-pro-tv.m3u8?sursa=0
+```
+
+Serverul rezolvă și **redirectează** (302) către sursă. Util când vrei să schimbi
+o sursă fără să reinstalezi addonul; video-ul tot curge direct de la CDN.
+
+Serverul nu retransmite niciodată fluxul, în niciun mod. Dacă ar face-o:
+
+- cererea ar pleca din Frankfurt, unde e găzduit Render, nu din România — și
+  posturile restricționate geografic ar începe să pice exact invers decât vrei;
+- planul free ar ceda la primul flux HD, care înseamnă 3–5 Mbit/s continuu.
+
+Singura excepție: sursele care declară un `referer` în `surse.js`. Un redirect nu
+poate impune un antet, deci pentru ele se folosește `behaviorHints.proxyHeaders`,
+care spune playerului Stremio ce antete să trimită.
+
+### Servere numerotate
+
+Fiecare sursă a unui canal apare ca `Server 1`, `Server 2`, `Server 3`, în ordinea
+din `surse.js`. Dacă unul e mort, alegi altul din listă fără să ieși din canal.
+
+### Rezoluții separate în listă
+
+La deschiderea unui canal, serverul citește playlistul master al sursei și scoate
+fiecare calitate ca opțiune de sine stătătoare:
+
+```
+Prima TV • Prin server • Auto      ← playerul alege singur
+Prima TV • Prin server • 1080p HD
+Prima TV • Prin server • 720p
+Prima TV • Prin server • 480p
+Prima TV • Deschide pagina oficială
+```
+
+Rezultatul e memorat cinci minute, deci nu se cere playlistul la fiecare
+deschidere. Dacă sursa nu răspunde în 3,5 secunde, rămâne doar varianta Auto —
+lista nu se blochează niciodată.
+
+### Mai multe surse pentru același post
+
+Un canal poate avea oricâte surse. Prima e cea principală, restul apar ca
+`Sursă 2`, `Sursă 3` și așa mai departe. Le pui în `surse.js`:
+
+```js
+'pro-tv': [
+  { url: 'https://...principal.m3u8' },
+  { url: 'https://...rezerva.m3u8', eticheta: 'Sursă de rezervă' },
+  { url: 'https://...cu-referer.m3u8', referer: 'https://www.protv.ro/' }
+]
+```
+
+sau, fără să atingi codul, în Render → Environment (mai multe, separate prin virgulă):
+
+```
+RAULTV_PRO_TV_URL = https://a.m3u8, https://b.m3u8
+```
+
+### Canalele fără sursă
+
+Rămân exact cum erau: o singură opțiune, **live link către pagina oficială**.
+Nimic nu se strică și nu apare niciun flux mort în listă.
+
+## Importul playlistului tău
+
+Dacă ai un abonament IPTV legal, furnizorul îți dă o adresă M3U. Pui adresa în:
+
+```
+RAULTV_M3U_URL = https://furnizorul-tau/playlist.m3u8
+```
+
+Serverul o descarcă la pornire, o reîmprospătează din oră în oră și potrivește
+automat canalele cu cele 201 posturi din catalog, după nume — ignorând
+diacriticele și sufixele de calitate. „PRO TV FHD" ajunge la PRO TV, „Digi Sport 1
+HD" și „Digi Sport 1 SD" ajung amândouă la Digi Sport 1, ca două calități.
+
+Alternativ, pui un fișier `canale.m3u` lângă `server.js`.
+
+Starea importului o vezi la `/health`:
+
+```json
+"playlist": { "stare": "încărcat", "intrari": 180, "potrivite": 143 }
+```
+
+## Verificarea fluxurilor
+
+Deschide `/verifica` și apasă butonul. Pagina testează fiecare sursă **din
+browserul tău**, nu de pe server, și arată pentru fiecare canal dacă merge și ce
+rezoluții oferă.
+
+De ce din browser: serverul e în Frankfurt. Un test făcut de el ar spune „nu
+merge" pentru posturi care de fapt merg perfect de pe conexiunea ta din România.
+
 ## Rute
 
 | Rută | Descriere |
@@ -87,6 +195,11 @@ pregătesc în fundal la pornire, în pași de 40 ms, ca să nu blocheze primele
 | `/catalog/tv/raultv-<rubrica>.json` | Catalog dedicat unei rubrici |
 | `/meta/tv/<id>.json` | Detalii canal |
 | `/stream/tv/<id>.json` | Flux live sau link oficial |
+| `/live/<id>.m3u8` | Fluxul, prin server (302 către sursă) |
+| `/live/<id>.m3u8?sursa=1` | A doua sursă a canalului |
+| `/live/<id>.m3u8?rez=0` | O rezoluție anume |
+| `/verifica` | Testează fluxurile din browserul tău |
+| `/surse.json` | Lista surselor configurate |
 | `/poster/<id>.png`, `/background/<id>.png`, `/logo.png` | Grafică |
 | `/health` | Stare, număr de canale, postere în cache |
 | `/` | Pagină de instalare cu lista rubricilor |
@@ -135,13 +248,16 @@ sincronizează addonurile în aplicația de pe TV.
 ## Structura
 
 ```
-server.js        rutare HTTP, manifest, cataloage, meta, stream
+server.js        rutare HTTP, manifest, cataloage, meta, stream, fluxuri
 channels.js      lista celor 201 posturi + paleta și ordinea rubricilor
+surse.js         sursele de flux, pe canal — aici adaugi linkuri
+lib/live.js      rezolvarea surselor, rezoluțiile, retransmisia HLS
+lib/m3u.js       importul playlistului și potrivirea după nume
 lib/font.js      font vectorial cu diacritice românești
 lib/canvas.js    desen cu anti-aliasing
 lib/png.js       encoder PNG
 lib/poster.js    designul posterelor, cu cache pe rubrică
-test.js          17 teste
+test.js          25 teste
 ```
 
 ## Notă

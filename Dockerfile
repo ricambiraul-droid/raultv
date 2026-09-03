@@ -3,7 +3,7 @@ FROM node:20-alpine
 WORKDIR /app
 
 COPY package.json ./
-COPY server.js channels.js test.js ./
+COPY server.js channels.js surse.js test.js ./
 COPY lib ./lib
 
 ENV NODE_ENV=production

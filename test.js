@@ -6,6 +6,8 @@ const net = require('node:net');
 const {
   server, channels, categories, genreCatalogs, MAIN_CATALOG_ID, PAGE_SIZE, searchKey
 } = require('./server');
+const { parseMaster, labelFor, rewritePlaylist, sourcesFor } = require('./lib/live');
+const { parseM3U, matchChannels, normalize } = require('./lib/m3u');
 const font = require('./lib/font');
 const { wrapToWidth } = require('./lib/poster');
 
@@ -139,11 +141,153 @@ test('meta si stream pentru fiecare canal', async () => {
 
     const stream = await get(`/stream/tv/${channel.id}.json`);
     assert.equal(stream.status, 200, channel.id);
-    assert.equal(stream.body.streams.length, 1);
-    const first = stream.body.streams[0];
-    assert.equal(first.name, 'RaulTV');
-    assert.equal(first.url || first.externalUrl, channel.url || channel.officialPage);
+    assert.ok(stream.body.streams.length >= 1, channel.id);
+
+    const last = stream.body.streams[stream.body.streams.length - 1];
+    assert.equal(last.externalUrl, channel.officialPage,
+      `${channel.id}: ultima opțiune trebuie să fie pagina oficială`);
+
+    if (channel.surse.length) {
+      const prim = stream.body.streams[0];
+      // modul implicit e „direct": adresa reală a sursei, fără hop prin addon
+      assert.equal(prim.url, channel.surse[0].url, `${channel.id}: link direct`);
+      assert.equal(prim.behaviorHints.notWebReady, true);
+      assert.match(prim.title, /Server 1/, `${channel.id}: serverele sunt numerotate`);
+    } else {
+      assert.equal(stream.body.streams.length, 1,
+        `${channel.id}: fără sursă trebuie doar linkul online`);
+      assert.ok(!stream.body.streams[0].url);
+    }
+    for (const item of stream.body.streams) assert.equal(item.name, 'RaulTV');
   }
+});
+
+test('modul server rutează prin addon, modul direct nu', async () => {
+  const { streamsFor } = require('./server');
+  const cu = channels.find(channel => channel.surse.length);
+
+  const direct = await streamsFor(cu, 'https://exemplu.ro');
+  assert.equal(direct[0].url, cu.surse[0].url, 'implicit: adresa reală a sursei');
+
+  // modul se schimbă dintr-o variabilă de mediu, verificată la pornire
+  assert.ok(['direct', 'server'].includes((await get('/health')).body.modFlux));
+});
+
+test('fiecare sursă apare ca server numerotat', async () => {
+  const cu = channels.filter(channel => channel.surse.length > 1);
+  for (const channel of cu) {
+    const { body } = await get(`/stream/tv/${channel.id}.json`);
+    channel.surse.forEach((source, index) => {
+      assert.ok(body.streams.some(item => item.title.includes(`Server ${index + 1}`)),
+        `${channel.id}: lipsește Server ${index + 1}`);
+    });
+  }
+});
+
+test('ruta /live redirectează către sursă, nu retransmite', async () => {
+  const cu = channels.find(channel => channel.surse.length && !channel.surse[0].referer);
+  const response = await fetch(`${base}/live/${cu.id}.m3u8`, { redirect: 'manual' });
+  assert.equal(response.status, 302, 'trebuie redirect, nu retransmisie');
+  assert.equal(response.headers.get('location'), cu.surse[0].url);
+
+  const fara = channels.find(channel => !channel.surse.length);
+  const lipsa = await fetch(`${base}/live/${fara.id}.m3u8`);
+  assert.equal(lipsa.status, 404);
+  const corp = await lipsa.json();
+  assert.equal(corp.paginaOficiala, fara.officialPage);
+  assert.ok(corp.variabila.startsWith('RAULTV_') || corp.variabila.startsWith('DIGI_'));
+
+  assert.equal((await fetch(`${base}/live/raultv-inexistent.m3u8`)).status, 404);
+});
+
+test('sursele se citesc din surse.js și din variabile de mediu', () => {
+  const tabel = { 'test-canal': [{ url: 'https://a.ro/1.m3u8' }] };
+  assert.equal(sourcesFor('test-canal', tabel).length, 1);
+  assert.equal(sourcesFor('fara-surse', tabel).length, 0);
+
+  process.env.RAULTV_TEST_CANAL_URL = 'https://b.ro/x.m3u8, https://b.ro/y.m3u8';
+  const cuMediu = sourcesFor('test-canal', tabel);
+  assert.equal(cuMediu.length, 3, 'mediul se adaugă înaintea celor din fișier');
+  assert.equal(cuMediu[0].url, 'https://b.ro/x.m3u8');
+  assert.ok(cuMediu[0].dinMediu);
+  delete process.env.RAULTV_TEST_CANAL_URL;
+
+  // adrese invalide sunt ignorate
+  assert.equal(sourcesFor('x', { x: [{ url: 'nu-e-adresa' }, { url: 'ftp://a/b' }] }).length, 0);
+});
+
+test('rezoluțiile se citesc din playlistul master', () => {
+  const master = [
+    '#EXTM3U',
+    '#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360',
+    'low.m3u8',
+    '#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080',
+    'https://alt.ro/high.m3u8',
+    '#EXT-X-STREAM-INF:BANDWIDTH=2400000,RESOLUTION=1280x720',
+    'mid.m3u8'
+  ].join('\n');
+
+  const variante = parseMaster(master, 'https://cdn.ro/live/master.m3u8');
+  assert.equal(variante.length, 3);
+  assert.deepEqual(variante.map(v => v.inaltime), [1080, 720, 360], 'cea mai bună prima');
+  assert.equal(variante[0].url, 'https://alt.ro/high.m3u8', 'adresă absolută păstrată');
+  assert.equal(variante[1].url, 'https://cdn.ro/live/mid.m3u8', 'adresă relativă rezolvată');
+  assert.deepEqual(variante.map(labelFor), ['1080p HD', '720p', '360p']);
+
+  // un playlist fara variante nu produce rezolutii
+  assert.deepEqual(parseMaster('#EXTM3U\n#EXTINF:6,\nseg.ts', 'https://cdn.ro/a.m3u8'), []);
+});
+
+test('retransmisia rescrie adresele din playlist', () => {
+  const rescris = rewritePlaylist(
+    '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="k.key"\nseg1.ts\nhttps://alt.ro/seg2.ts',
+    'https://cdn.ro/live/index.m3u8',
+    '/live/proxy'
+  );
+  assert.ok(rescris.includes('URI="/live/proxy?catre=https%3A%2F%2Fcdn.ro%2Flive%2Fk.key"'));
+  assert.ok(rescris.includes('/live/proxy?catre=https%3A%2F%2Fcdn.ro%2Flive%2Fseg1.ts'));
+  assert.ok(rescris.includes('/live/proxy?catre=https%3A%2F%2Falt.ro%2Fseg2.ts'));
+  assert.ok(rescris.startsWith('#EXTM3U'));
+});
+
+test('playlistul M3U se potrivește cu posturile din catalog', () => {
+  const intrari = parseM3U([
+    '#EXTM3U',
+    '#EXTINF:-1 tvg-name="PRO TV" group-title="RO",PRO TV FHD',
+    'https://ex.ro/protv.m3u8',
+    '#EXTINF:-1,Digi Sport 1 HD',
+    'https://ex.ro/ds1.m3u8',
+    '#EXTINF:-1,Digi Sport 1 SD',
+    'https://ex.ro/ds1sd.m3u8',
+    '#EXTINF:-1,Brasov TV',
+    'https://ex.ro/bv.m3u8',
+    '#EXTINF:-1,Canal Inexistent XYZ',
+    'https://ex.ro/nope.m3u8'
+  ].join('\n'));
+
+  assert.equal(intrari.length, 5);
+  const potriviri = matchChannels(intrari, channels);
+  assert.ok(potriviri['pro-tv'], 'PRO TV FHD trebuie potrivit');
+  assert.equal(potriviri['digi-sport-1'].length, 2, 'două calități pentru același post');
+  assert.ok(potriviri['brasov-tv'], 'diacriticele trebuie ignorate la potrivire');
+  assert.ok(!potriviri['canal-inexistent-xyz']);
+
+  // normalizarea nu trebuie sa confunde posturi diferite
+  assert.notEqual(normalize('Digi Sport 1'), normalize('Digi Sport 11'));
+  assert.equal(normalize('Brașov TV'), normalize('Brasov TV'));
+});
+
+test('pagina de verificare și lista surselor', async () => {
+  const surse = await get('/surse.json');
+  assert.equal(surse.status, 200);
+  assert.equal(surse.body.canale.length, channels.filter(c => c.surse.length).length);
+  assert.equal(surse.body.faraFlux, channels.filter(c => !c.surse.length).length);
+
+  const pagina = await fetch(base + '/verifica');
+  assert.equal(pagina.status, 200);
+  const html = await pagina.text();
+  assert.match(html, /Verificare fluxuri/);
+  assert.ok(html.includes('/surse.json'), 'pagina trebuie să ceară lista surselor');
 });
 
 // --------------------------------------------------------------------------
@@ -239,6 +383,8 @@ test('health si pagina de start', async () => {
   assert.equal(health.status, 200);
   assert.equal(health.body.channels, channels.length);
   assert.equal(health.body.categories, categories.length);
+  assert.equal(health.body.withStream, channels.filter(c => c.surse.length).length);
+  assert.ok(health.body.playlist, 'health trebuie să raporteze starea playlistului');
 
   const home = await fetch(base + '/');
   assert.equal(home.status, 200);
