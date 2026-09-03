@@ -3,9 +3,32 @@ services:
     name: raultv-stremio
     runtime: node
     plan: free
+    region: frankfurt
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /manifest.json
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: 20
+        value: "20"
+      # Latura posterului in pixeli (implicit 512). 384 = generare mai rapida pe planul free.
+      - key: RAULTV_POSTER_SIZE
+        value: "512"
+      # Fluxuri HLS opționale. Se completează în Render → Environment,
+      # niciodată în cod sau în repository.
+      - key: DIGI_24_URL
+        sync: false
+      - key: DIGI_SPORT_1_URL
+        sync: false
+      - key: DIGI_SPORT_2_URL
+        sync: false
+      - key: DIGI_SPORT_3_URL
+        sync: false
+      - key: DIGI_SPORT_4_URL
+        sync: false
+      - key: DIGI_WORLD_URL
+        sync: false
+      - key: DIGI_LIFE_URL
+        sync: false
+      - key: DIGI_ANIMAL_WORLD_URL
+        sync: false
