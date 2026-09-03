@@ -1,6 +1,6 @@
 {
   "name": "raultv-stremio-addon",
-  "version": "3.5.1",
+  "version": "3.7.0",
   "private": true,
   "description": "Addon Stremio cu televiziunile românești, grupate pe rubrici, cu postere generate pentru Smart TV",
   "main": "server.js",

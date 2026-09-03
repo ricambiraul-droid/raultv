@@ -1,10 +1,10 @@
-# RaulTV România — addon Stremio v3.5
+# RaulTV România — addon Stremio v3.7
 
 **201 televiziuni românești** în **13 rubrici**, cu postere generate pe server, gândite
 pentru afișare pe Smart TV. Server HTTP fără nicio dependență externă — doar Node.js.
 
 ```
-npm test     # 28 teste
+npm test     # 31 teste
 npm start    # http://localhost:7000/manifest.json
 ```
 
@@ -164,7 +164,7 @@ https://iptv-org.github.io/iptv/countries/ro.m3u
 https://iptv-org.github.io/iptv/languages/ron.m3u
 ```
 
-Cele trei se descarcă în paralel, se combină, se scot duplicatele și se
+Toate se descarcă în paralel, se combină, se scot duplicatele și se
 potrivesc cu cele 201 posturi din catalog. Lista se reîmprospătează din oră în oră.
 
 Schimbi sursele din Render → Environment:
@@ -202,6 +202,35 @@ sunt citite, iar antetele ajung la player prin `behaviorHints.proxyHeaders`.
 
 Calitatea scrisă în nume — `Atomic TV (360p)` — devine eticheta serverului.
 Starea importului o vezi la `/health`.
+
+## Siglele posturilor
+
+Playlisturile publice dau, pe lângă flux, și adresa siglei oficiale a fiecărui
+post (`tvg-logo`). Serverul o descarcă o dată, o decodează și o compune în
+poster, centrată, cu numele canalului dedesubt.
+
+Din 117 sigle din indexul românesc, 106 sunt PNG — de aceea `lib/pngdec.js` e un
+decodor PNG scris de la zero (`zlib.inflateSync` face dezarhivarea, restul e
+refacerea filtrelor pe scanlinii). Ce nu e PNG se ignoră, iar posterul rămâne
+cel cu numele scris mare.
+
+Trei lucruri fac diferența între „merge" și „arată bine":
+
+**Tăierea marginilor.** Multe sigle vin cu jumătate din imagine transparentă.
+Fără tăiere ar apărea mici și pierdute în chenar.
+
+**Redimensionare prin mediere.** Siglele vin la 400–600px și intră într-o casetă
+de ~180px. La micșorare se mediază toți pixelii sursă care cad într-un pixel
+destinație, cu alfa premultiplicat — altfel marginile ies zimțate și murdare.
+
+**Placă automată sub siglele întunecate.** Se măsoară luminozitatea medie a
+pixelilor vizibili; sub 0,42 sigla primește un dreptunghi alb rotunjit
+dedesubt. Fără el, o siglă neagră pe fundal transparent dispare complet în
+degradeul închis al posterului.
+
+Siglele se aduc în fundal, în pași de câte șase la 0,9 secunde, ca să nu
+încetinească pornirea. Când una ajunge, posterul memorat al canalului se șterge
+și se regenerează la următoarea cerere. Starea o vezi la `/health`, în `sigle`.
 
 ## Verificarea fluxurilor
 
@@ -282,11 +311,14 @@ channels.js      lista celor 201 posturi + paleta și ordinea rubricilor
 surse.js         sursele de flux, pe canal — aici adaugi linkuri
 lib/live.js      rezolvarea surselor, rezoluțiile, retransmisia HLS
 lib/m3u.js       importul playlistului și potrivirea după nume
+lib/resolver.js  căutarea fluxului pe pagina oficială
+lib/pngdec.js    decodor PNG, pentru siglele posturilor
+lib/logos.js     descărcarea și pregătirea siglelor
 lib/font.js      font vectorial cu diacritice românești
 lib/canvas.js    desen cu anti-aliasing
 lib/png.js       encoder PNG
 lib/poster.js    designul posterelor, cu cache pe rubrică
-test.js          28 teste
+test.js          31 teste
 ```
 
 ## Notă

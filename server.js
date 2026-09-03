@@ -9,9 +9,10 @@ const { buildPoster, buildBackground, buildLogo, ImageCache } = require('./lib/p
 const live = require('./lib/live');
 const m3u = require('./lib/m3u');
 const resolver = require('./lib/resolver');
+const logos = require('./lib/logos');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.5.1';
+const VERSION = '3.7.0';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
@@ -32,8 +33,14 @@ const AUTO = process.env.RAULTV_AUTO !== 'off';
 // adună fluxurile românești accesibile liber. Se schimbă din RAULTV_M3U_URL
 // (mai multe adrese, separate prin virgulă) sau se oprește cu valoarea "off".
 const PLAYLISTURI_IMPLICITE = [
+  // iptv-org: indexul principal pe țară și pe limbă
   'https://iptv-org.github.io/iptv/countries/ro.m3u',
-  'https://iptv-org.github.io/iptv/languages/ron.m3u'
+  'https://iptv-org.github.io/iptv/languages/ron.m3u',
+  // fișierul brut din repository, are intrări care lipsesc din cel publicat
+  'https://raw.githubusercontent.com/iptv-org/iptv/master/streams/ro.m3u',
+  // Free-TV: al doilea index open-source, listă mai mică dar întreținută
+  'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlists/playlist_romania.m3u8',
+  'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlists/playlist_moldova.m3u8'
 ];
 
 // ---------------------------------------------------------------------------
@@ -74,6 +81,7 @@ function applyPlaylist(intrari, origine) {
     // scoatem sursele adăugate la o încărcare anterioară
     channel.surse = channel.surse.filter(source => !source.dinPlaylist);
     for (const source of (potriviri[channel.slug] || [])) {
+      if (!channel.logo && source.logo) channel.logo = source.logo;
       channel.surse.push({
         url: source.url,
         referer: source.referer || null,
@@ -89,6 +97,21 @@ function applyPlaylist(intrari, origine) {
   }
 
   resortCatalogs();
+
+  // Siglele oficiale vin din playlist. Le aducem în fundal, iar când una
+  // ajunge ștergem posterul memorat al canalului, ca următoarea cerere să-l
+  // regenereze cu siglă în loc de text.
+  logos.incalzeste(
+    channels.map(channel => channel.logo),
+    url => {
+      for (const channel of channels) {
+        if (channel.logo === url) {
+          posterCache.delete(channel.id);
+          backgroundCache.delete(channel.id);
+        }
+      }
+    }
+  );
 
   playlistState.stare = 'încărcat';
   playlistState.origine = origine;
@@ -929,6 +952,7 @@ buton.addEventListener('click', async function () {
       postersCached: posterCache.size,
       playlist: playlistState,
       auto: AUTO ? resolver.stare() : 'oprit',
+      sigle: logos.stare(),
       cautare: { ruleaza: sweepState.ruleaza, facute: sweepState.facute, gasite: sweepState.gasite }
     });
   }

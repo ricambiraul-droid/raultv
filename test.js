@@ -370,6 +370,85 @@ test('tvg-id-ul iptv-org se potrivește cu posturile', () => {
   assert.equal(potriviri['a7-tv'][0].calitate, '1080P');
 });
 
+test('legăturile care nu sunt fluxuri sunt ignorate', () => {
+  const { esteFlux } = require('./lib/m3u');
+  assert.ok(esteFlux('https://cdn.ro/live/index.m3u8'));
+  assert.ok(esteFlux('https://edge.example/hls/canal?token=1'));
+  for (const rau of ['https://www.youtube.com/channel/UC1/live', 'https://youtu.be/abc',
+    'https://www.facebook.com/x/videos/1', 'https://www.twitch.tv/x']) {
+    assert.ok(!esteFlux(rau), `${rau} nu e flux redabil`);
+  }
+
+  // o pagină video nu ajunge sursă, dar fluxul de lângă ea da
+  const intrari = parseM3U([
+    '#EXTM3U',
+    '#EXTINF:-1,Canal pe YouTube',
+    'https://www.youtube.com/watch?v=abc',
+    '#EXTINF:-1 tvg-id="AtomicTV.ro",Atomic TV (360p)',
+    'https://atomic.streamnet.ro/atomictv.m3u8'
+  ].join('\n'));
+  assert.equal(intrari.length, 1);
+  assert.equal(intrari[0].nume, 'Atomic TV (360p)');
+});
+
+test('decodorul PNG citește înapoi ce scrie encoderul', () => {
+  const { Canvas } = require('./lib/canvas');
+  const { decodePng } = require('./lib/pngdec');
+
+  const c = new Canvas(64, 40);
+  c.gradient('#ff0000', '#0000ff', 0);
+  c.circle(32, 20, 12, '#00ff00', 1);
+
+  const imagine = decodePng(c.toPng());
+  assert.ok(imagine, 'PNG-ul propriu trebuie decodat');
+  assert.equal(imagine.latime, 64);
+  assert.equal(imagine.inaltime, 40);
+
+  const px = (x, y) => {
+    const i = (y * imagine.latime + x) * 4;
+    return [imagine.rgba[i], imagine.rgba[i + 1], imagine.rgba[i + 2], imagine.rgba[i + 3]];
+  };
+  assert.deepEqual(px(32, 20), [0, 255, 0, 255], 'centrul e cercul verde');
+  assert.equal(px(0, 0)[0], 255, 'colțul e roșu');
+  assert.equal(px(0, 0)[3], 255, 'opac peste tot');
+
+  // gunoi în loc de PNG nu trebuie să arunce
+  assert.equal(decodePng(Buffer.from('nu sunt un png')), null);
+  assert.equal(decodePng(Buffer.alloc(0)), null);
+});
+
+test('siglele se taie și se măsoară corect', () => {
+  const { trimAlpha, luminozitate, Canvas } = require('./lib/canvas');
+
+  // pătrat opac în mijlocul unei pânze transparente
+  const w = 100;
+  const h = 100;
+  const rgba = Buffer.alloc(w * h * 4);
+  for (let y = 30; y < 70; y++) {
+    for (let x = 25; x < 75; x++) {
+      const i = (y * w + x) * 4;
+      rgba[i] = rgba[i + 1] = rgba[i + 2] = 255;
+      rgba[i + 3] = 255;
+    }
+  }
+  const taiat = trimAlpha({ latime: w, inaltime: h, rgba });
+  assert.equal(taiat.latime, 50, 'marginile goale se taie pe orizontală');
+  assert.equal(taiat.inaltime, 40, 'și pe verticală');
+  assert.ok(luminozitate(taiat) > 0.9, 'sigla albă e luminoasă');
+
+  const negru = Buffer.alloc(20 * 20 * 4);
+  for (let i = 0; i < 20 * 20; i++) negru[i * 4 + 3] = 255;
+  assert.ok(luminozitate({ latime: 20, inaltime: 20, rgba: negru }) < 0.1, 'sigla neagră e întunecată');
+
+  // compunerea peste fundal păstrează culorile
+  const panza = new Canvas(200, 200);
+  panza.gradient('#1b4a8f', '#0a1f3d');
+  panza.drawImage(taiat, 50, 60, 100, 80);
+  const rezultat = require('./lib/pngdec').decodePng(panza.toPng());
+  const centru = (rezultat.rgba[(100 * 200 + 100) * 4]);
+  assert.ok(centru > 240, 'sigla albă se vede peste degrade');
+});
+
 test('pagina de verificare și lista surselor', async () => {
   const surse = await get('/surse.json');
   assert.equal(surse.status, 200);
