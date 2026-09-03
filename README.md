@@ -1,10 +1,10 @@
-# RaulTV România — addon Stremio v3.1
+# RaulTV România — addon Stremio v3.5
 
 **201 televiziuni românești** în **13 rubrici**, cu postere generate pe server, gândite
 pentru afișare pe Smart TV. Server HTTP fără nicio dependență externă — doar Node.js.
 
 ```
-npm test     # 25 teste
+npm test     # 28 teste
 npm start    # http://localhost:7000/manifest.json
 ```
 
@@ -153,26 +153,55 @@ RAULTV_PRO_TV_URL = https://a.m3u8, https://b.m3u8
 Rămân exact cum erau: o singură opțiune, **live link către pagina oficială**.
 Nimic nu se strică și nu apare niciun flux mort în listă.
 
-## Importul playlistului tău
+## Playlisturi
 
-Dacă ai un abonament IPTV legal, furnizorul îți dă o adresă M3U. Pui adresa în:
+Implicit, serverul încarcă la pornire indexul public **iptv-org**, proiectul
+open-source care adună fluxurile TV accesibile liber:
 
 ```
-RAULTV_M3U_URL = https://furnizorul-tau/playlist.m3u8
+https://iptv-org.github.io/iptv/streams/ro.m3u
+https://iptv-org.github.io/iptv/countries/ro.m3u
+https://iptv-org.github.io/iptv/languages/ron.m3u
 ```
 
-Serverul o descarcă la pornire, o reîmprospătează din oră în oră și potrivește
-automat canalele cu cele 201 posturi din catalog, după nume — ignorând
-diacriticele și sufixele de calitate. „PRO TV FHD" ajunge la PRO TV, „Digi Sport 1
-HD" și „Digi Sport 1 SD" ajung amândouă la Digi Sport 1, ca două calități.
+Cele trei se descarcă în paralel, se combină, se scot duplicatele și se
+potrivesc cu cele 201 posturi din catalog. Lista se reîmprospătează din oră în oră.
 
-Alternativ, pui un fișier `canale.m3u` lângă `server.js`.
+Schimbi sursele din Render → Environment:
 
-Starea importului o vezi la `/health`:
-
-```json
-"playlist": { "stare": "încărcat", "intrari": 180, "potrivite": 143 }
 ```
+RAULTV_M3U_URL = https://furnizorul-tau/playlist.m3u          o singură adresă
+RAULTV_M3U_URL = https://a/p.m3u, https://b/p.m3u             mai multe
+RAULTV_M3U_URL = off                                          doar canale.m3u local
+```
+
+Un fișier `canale.m3u` pus lângă `server.js` e citit întotdeauna, chiar și pe `off`.
+E lista ta, scrisă de mână, și are prioritate față de playlisturile publice.
+
+### Cum se face potrivirea
+
+Trei încercări, în ordine:
+
+1. **`tvg-id`** — identificatorul standardizat, cel mai sigur. `TVR1.ro@SD` se
+   desface în „TVR 1", `AtomicTV.ro` în „Atomic TV", `RealitateaPlus.ro` în
+   „Realitatea Plus".
+2. **Numele afișat**, cu diacriticele și sufixele de calitate ignorate.
+3. **Numele fără spații**, ca „A7TV" să prindă „A7 TV".
+
+Posturile care nu există în catalog sunt ignorate, nu creează canale noi.
+
+### Două capcane rezolvate
+
+Liniile `#EXTINF` din iptv-org conțin un `http-user-agent` cu virgule în el —
+`(KHTML, like Gecko)`. Numele se ia după **ultima** virgulă, nu prima; altfel
+jumătate din catalog se numește „like Gecko) Chrome/130...".
+
+Unele fluxuri cer antete `http-referrer` și `http-user-agent`, date fie ca
+atribute pe linia `#EXTINF`, fie pe linii `#EXTVLCOPT` dedesubt. Ambele forme
+sunt citite, iar antetele ajung la player prin `behaviorHints.proxyHeaders`.
+
+Calitatea scrisă în nume — `Atomic TV (360p)` — devine eticheta serverului.
+Starea importului o vezi la `/health`.
 
 ## Verificarea fluxurilor
 
@@ -257,7 +286,7 @@ lib/font.js      font vectorial cu diacritice românești
 lib/canvas.js    desen cu anti-aliasing
 lib/png.js       encoder PNG
 lib/poster.js    designul posterelor, cu cache pe rubrică
-test.js          25 teste
+test.js          28 teste
 ```
 
 ## Notă

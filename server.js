@@ -11,7 +11,7 @@ const m3u = require('./lib/m3u');
 const resolver = require('./lib/resolver');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.3.2';
+const VERSION = '3.5.0';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
@@ -27,6 +27,15 @@ const MOD_FLUX = process.env.RAULTV_MOD_FLUX === 'server' ? 'server' : 'direct';
 // public chiar pe pagina oficială a postului, în momentul în care apeși play.
 // Se oprește cu RAULTV_AUTO=off.
 const AUTO = process.env.RAULTV_AUTO !== 'off';
+
+// Playlisturi publice folosite implicit: indexul open-source iptv-org, care
+// adună fluxurile românești accesibile liber. Se schimbă din RAULTV_M3U_URL
+// (mai multe adrese, separate prin virgulă) sau se oprește cu valoarea "off".
+const PLAYLISTURI_IMPLICITE = [
+  'https://iptv-org.github.io/iptv/streams/ro.m3u',
+  'https://iptv-org.github.io/iptv/countries/ro.m3u',
+  'https://iptv-org.github.io/iptv/languages/ron.m3u'
+];
 
 // ---------------------------------------------------------------------------
 // Canale
@@ -58,8 +67,7 @@ const byId = new Map(channels.map(channel => [channel.id, channel]));
 
 const playlistState = { stare: 'neconfigurat', intrari: 0, potrivite: 0, la: null, eroare: null };
 
-function applyPlaylist(text, origine) {
-  const intrari = m3u.parseM3U(text);
+function applyPlaylist(intrari, origine) {
   const potriviri = m3u.matchChannels(intrari, channels);
 
   let potrivite = 0;
@@ -69,9 +77,10 @@ function applyPlaylist(text, origine) {
     for (const source of (potriviri[channel.slug] || [])) {
       channel.surse.push({
         url: source.url,
-        referer: null,
+        referer: source.referer || null,
+        userAgent: source.userAgent || null,
+        calitate: source.calitate || null,
         eticheta: `Server ${channel.surse.length + 1}`,
-        calitate: source.eticheta || null,
         dinMediu: false,
         dinPlaylist: true
       });
@@ -86,30 +95,66 @@ function applyPlaylist(text, origine) {
   playlistState.origine = origine;
   playlistState.intrari = intrari.length;
   playlistState.potrivite = potrivite;
+  playlistState.canale = Object.keys(potriviri).length;
   playlistState.la = new Date().toISOString();
   playlistState.eroare = null;
-  console.log(`RaulTV: playlist ${origine} — ${intrari.length} intrări, ${potrivite} potrivite`);
+  console.log(`RaulTV: playlist ${origine} — ${intrari.length} intrări, ${potrivite} surse pe ${playlistState.canale} canale`);
 }
 
 async function loadPlaylist() {
-  const url = process.env.RAULTV_M3U_URL;
-  const file = path.join(__dirname, 'canale.m3u');
+  const setare = String(process.env.RAULTV_M3U_URL || '').trim();
 
-  try {
-    if (url) {
-      applyPlaylist(await m3u.fetchM3U(url), 'din RAULTV_M3U_URL');
-      return;
-    }
-    if (fs.existsSync(file)) {
-      applyPlaylist(fs.readFileSync(file, 'utf8'), 'din canale.m3u');
-      return;
-    }
-  } catch (error) {
-    playlistState.stare = 'eroare';
-    playlistState.eroare = error.message;
-    console.error('RaulTV: playlistul nu a putut fi încărcat —', error.message);
+  // "off" oprește doar descărcarea playlisturilor publice; fișierul local
+  // canale.m3u rămâne citit, fiindcă e lista ta, nu una de pe internet.
+  const adrese = setare.toLowerCase() === 'off'
+    ? []
+    : (setare
+      ? setare.split(/[,\s]+/).filter(item => /^https?:\/\//i.test(item))
+      : PLAYLISTURI_IMPLICITE);
+
+  const fisier = path.join(__dirname, 'canale.m3u');
+  const intrari = [];
+  const surseFolosite = [];
+  const erori = [];
+
+  // fișierul local are prioritate: e lista ta, scrisă de mână
+  if (fs.existsSync(fisier)) {
+    try {
+      intrari.push(...m3u.parseM3U(fs.readFileSync(fisier, 'utf8')));
+      surseFolosite.push('canale.m3u');
+    } catch (error) { erori.push(`canale.m3u: ${error.message}`); }
   }
+
+  const descarcate = await Promise.all(adrese.map(async adresa => {
+    try {
+      return { adresa, intrari: m3u.parseM3U(await m3u.fetchM3U(adresa)) };
+    } catch (error) {
+      erori.push(`${adresa}: ${error.message}`);
+      return null;
+    }
+  }));
+
+  for (const rezultat of descarcate) {
+    if (!rezultat) continue;
+    intrari.push(...rezultat.intrari);
+    surseFolosite.push(rezultat.adresa.replace(/^https?:\/\//, '').replace('iptv-org.github.io/iptv/', ''));
+  }
+
+  // fără duplicate: aceeași adresă poate apărea în mai multe playlisturi
+  const vazute = new Set();
+  const unice = intrari.filter(intrare => !vazute.has(intrare.url) && vazute.add(intrare.url));
+
+  if (!unice.length) {
+    playlistState.stare = erori.length ? 'eroare' : 'neconfigurat';
+    playlistState.eroare = erori.join(' · ') || null;
+    console.error('RaulTV: niciun playlist încărcat —', playlistState.eroare);
+    return;
+  }
+
+  applyPlaylist(unice, surseFolosite.join(' + '));
+  if (erori.length) playlistState.eroare = erori.join(' · ');
 }
+
 
 // Categoriile efectiv prezente, in ordinea definita.
 const categories = CATEGORY_ORDER.filter(category =>
@@ -283,6 +328,7 @@ async function streamsFor(channel, base) {
     const server = source.eticheta;
     const calitate = source.calitate ? ` ${source.calitate}` : '';
 
+
     push(source, index, `${server}${calitate} • Auto`, source.url, null);
 
     let variante = [];
@@ -294,14 +340,29 @@ async function streamsFor(channel, base) {
     }
   }
 
-  // Canalele fără sursă: serverul caută fluxul pe pagina oficială la play.
-  // Nu rezolvăm aici, ca lista să apară instant — căutarea se face la cerere.
+  // Canalele fără sursă proprie: dacă serverul a găsit deja fluxuri pe pagina
+  // oficială, le arătăm pe toate ca servere numerotate. Dacă n-a căutat încă,
+  // oferim o intrare care declanșează căutarea la play, ca lista să apară instant.
   if (AUTO && !channel.surse.length) {
-    streams.push({
-      name: 'RaulTV',
-      title: `${channel.name}\nCaută fluxul pe server`,
-      url: `${base}/live/${channel.id}.m3u8`
-    });
+    const gasite = resolver.dinCache(channel.id);
+    if (gasite && gasite.length) {
+      gasite.forEach((url, index) => {
+        const hints = {};
+        if (url.startsWith('http://')) hints.notWebReady = true;
+        streams.push({
+          name: 'RaulTV',
+          title: `${channel.name}\nServer ${index + 1} • găsit automat`,
+          url,
+          behaviorHints: hints
+        });
+      });
+    } else {
+      streams.push({
+        name: 'RaulTV',
+        title: `${channel.name}\nCaută fluxul pe server`,
+        url: `${base}/live/${channel.id}.m3u8`
+      });
+    }
   }
 
   streams.push({
@@ -410,6 +471,47 @@ async function resolveTarget(source, rez) {
   return source.url;
 }
 
+// ---------------------------------------------------------------------------
+// Căutare pe tot catalogul, în fundal
+// ---------------------------------------------------------------------------
+
+const sweepState = { ruleaza: false, total: 0, facute: 0, gasite: 0, adrese: 0, rezultate: [] };
+
+function porneste() {
+  if (sweepState.ruleaza) return;
+
+  const coada = channels.filter(channel => !channel.surse.length);
+  sweepState.ruleaza = true;
+  sweepState.total = coada.length;
+  sweepState.facute = 0;
+  sweepState.gasite = 0;
+  sweepState.adrese = 0;
+  sweepState.rezultate = [];
+
+  let index = 0;
+  const lucrator = async () => {
+    while (index < coada.length) {
+      const channel = coada[index++];
+      let urls = [];
+      try { urls = await resolver.rezolva(channel); } catch { urls = []; }
+      sweepState.facute++;
+      if (urls.length) {
+        sweepState.gasite++;
+        sweepState.adrese += urls.length;
+        sweepState.rezultate.push({ id: channel.id, nume: channel.name, urls });
+      }
+    }
+  };
+
+  Promise.all([lucrator(), lucrator(), lucrator(), lucrator()])
+    .then(() => {
+      resortCatalogs();
+      console.log(`RaulTV: căutare terminată — ${sweepState.gasite} posturi, ${sweepState.adrese} adrese`);
+    })
+    .catch(error => console.error('Căutarea a eșuat:', error))
+    .finally(() => { sweepState.ruleaza = false; });
+}
+
 const posterCache = new ImageCache(260);
 const backgroundCache = new ImageCache(60);
 let logoBuffer = null;
@@ -492,8 +594,10 @@ function handle(req, res) {
           variabila: channel.envKey
         });
       }
+      const care = Number.parseInt(url.searchParams.get('sursa'), 10);
       return resolver.rezolva(channel)
-        .then(gasit => {
+        .then(lista => {
+          const gasit = lista[Number.isFinite(care) && lista[care] ? care : 0];
           if (!gasit) {
             return json(req, res, 404, {
               error: 'Nu am găsit un flux public pe pagina oficială',
@@ -716,6 +820,104 @@ buton.addEventListener('click', async function () {
     return res.end(req.method === 'HEAD' ? undefined : body);
   }
 
+  // ---- căutare pe tot catalogul ------------------------------------------
+  // Rulează rezolvatorul peste toate canalele fără sursă proprie, câte patru
+  // odată. Durează câteva minute, dar se face o singură dată: rezultatele
+  // rămân memorate și apar imediat în Stremio ca servere numerotate.
+  if (path === '/cauta-tot.json') {
+    if (!AUTO) return json(req, res, 400, { error: 'Rezolvarea automată e oprită' });
+    porneste();
+    return json(req, res, 200, sweepState);
+  }
+
+  if (path === '/export.m3u') {
+    const linii = ['#EXTM3U'];
+    for (const channel of allSorted) {
+      const surse = channel.surse.length
+        ? channel.surse.map(item => item.url)
+        : (resolver.dinCache(channel.id) || []);
+      surse.forEach((sursaUrl, index) => {
+        linii.push(`#EXTINF:-1 tvg-id="${channel.slug}" group-title="${channel.category}",${channel.name}${index ? ` (server ${index + 1})` : ''}`);
+        linii.push(sursaUrl);
+      });
+    }
+    const corp = linii.join('\n') + '\n';
+    res.writeHead(200, {
+      'Content-Type': 'audio/x-mpegurl; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="canale.m3u"',
+      'Content-Length': Buffer.byteLength(corp),
+      ...CORS
+    });
+    return res.end(req.method === 'HEAD' ? undefined : corp);
+  }
+
+  if (path === '/cauta-tot') {
+    const corp = `<!doctype html><html lang="ro"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Căutare fluxuri — RaulTV</title><style>
+body{background:#07111f;color:#e8eef7;font-family:system-ui,Arial,sans-serif;max-width:820px;margin:0 auto;padding:36px 20px 80px;line-height:1.6}
+h1{color:#f5c451;font-size:1.6rem;margin:0 0 6px}
+.sub{color:#8aa4c4;margin:0 0 20px;font-size:.95rem}
+button{background:#f5c451;color:#07111f;border:0;border-radius:8px;padding:11px 20px;font-weight:700;font-size:.95rem;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+.bara{height:8px;background:#122540;border-radius:5px;overflow:hidden;margin:18px 0 10px}
+.bara i{display:block;height:100%;background:#f5c451;width:0;transition:width .4s}
+.stat{font-size:.95rem;color:#a7bcd7;margin:0 0 16px}
+.stat b{color:#63d6a0}
+table{width:100%;border-collapse:collapse;font-size:.9rem;margin-top:10px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #1c2f47;vertical-align:top}
+th{color:#8aa4c4;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase}
+code{font-family:ui-monospace,Menlo,monospace;font-size:.78rem;color:#7b91af;word-break:break-all}
+a.dl{display:inline-block;margin-top:16px;color:#5fd4ff}
+.nota{border-left:3px solid #22395a;padding-left:14px;color:#a7bcd7;font-size:.9rem;margin:22px 0 0}
+</style>
+<h1>Caută fluxuri pe toate posturile</h1>
+<p class="sub">Serverul deschide pagina oficială a fiecărui post fără sursă și adună <strong>toate</strong> adresele de flux care răspund — inclusiv cele de calitate mică. Durează câteva minute. Rezultatele apar apoi în Stremio ca Server 1, Server 2 și așa mai departe.</p>
+<button id="start">Pornește căutarea</button>
+<div class="bara"><i id="progres"></i></div>
+<p class="stat" id="stat">Nepornit.</p>
+<table id="t"><thead><tr><th>Canal</th><th>Servere</th><th>Adresă</th></tr></thead><tbody></tbody></table>
+<a class="dl" id="dl" href="/export.m3u" hidden>Descarcă rezultatele ca canale.m3u</a>
+<p class="nota">Ca să rămână permanente, pune fișierul descărcat în repository sub numele <code>canale.m3u</code> și dă commit. Altfel se pierd la următoarea repornire a serverului.</p>
+<script>
+var buton = document.getElementById('start'), stat = document.getElementById('stat');
+var progres = document.getElementById('progres'), corp = document.querySelector('#t tbody');
+var dl = document.getElementById('dl');
+
+function deseneaza(s) {
+  var pct = s.total ? Math.round(s.facute / s.total * 100) : 0;
+  progres.style.width = pct + '%';
+  stat.innerHTML = s.facute + ' din ' + s.total + ' verificate · <b>' + s.gasite +
+    '</b> posturi cu flux · ' + s.adrese + ' adrese';
+  corp.innerHTML = '';
+  (s.rezultate || []).forEach(function (r) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + r.nume + '</td><td>' + r.urls.length + '</td><td><code>' +
+      r.urls[0].replace(/[&<>]/g, '') + '</code></td>';
+    corp.appendChild(tr);
+  });
+  if (s.gasite) dl.hidden = false;
+}
+
+buton.addEventListener('click', async function () {
+  buton.disabled = true;
+  buton.textContent = 'Se caută…';
+  while (true) {
+    var s = await (await fetch('/cauta-tot.json', { cache: 'no-store' })).json();
+    deseneaza(s);
+    if (!s.ruleaza) break;
+    await new Promise(function (r) { setTimeout(r, 2500); });
+  }
+  buton.disabled = false;
+  buton.textContent = 'Caută din nou';
+});
+</script></html>`;
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(corp),
+      ...CORS
+    });
+    return res.end(req.method === 'HEAD' ? undefined : corp);
+  }
+
   if (path === '/health') {
     return json(req, res, 200, {
       status: 'ok',
@@ -727,7 +929,8 @@ buton.addEventListener('click', async function () {
       categories: categories.length,
       postersCached: posterCache.size,
       playlist: playlistState,
-      auto: AUTO ? resolver.stare() : 'oprit'
+      auto: AUTO ? resolver.stare() : 'oprit',
+      cautare: { ruleaza: sweepState.ruleaza, facute: sweepState.facute, gasite: sweepState.gasite }
     });
   }
 
@@ -759,7 +962,7 @@ img{border-radius:14px;margin-right:10px;vertical-align:middle}
 <code>${escapeHtml(manifestUrl)}</code>
 <a class="btn" href="stremio://${escapeHtml(manifestUrl.replace(/^https?:\/\//, ''))}">Instalează în Stremio</a>
 <table><tr><th>Rubrică</th><th>Canale</th><th>Catalog</th></tr>${rows}</table>
-<p style="margin-top:22px"><a href="/manifest.json">manifest.json</a> · <a href="/catalog/tv/${MAIN_CATALOG_ID}.json">toate canalele</a> · <a href="/verifica">verifică fluxurile</a> · <a href="/health">health</a></p>
+<p style="margin-top:22px"><a href="/manifest.json">manifest.json</a> · <a href="/catalog/tv/${MAIN_CATALOG_ID}.json">toate canalele</a> · <a href="/cauta-tot">caută fluxuri</a> · <a href="/verifica">verifică fluxurile</a> · <a href="/health">health</a></p>
 </main></html>`;
 
     res.writeHead(200, {

@@ -7,7 +7,7 @@ const {
   server, channels, categories, genreCatalogs, MAIN_CATALOG_ID, PAGE_SIZE, searchKey
 } = require('./server');
 const { parseMaster, labelFor, rewritePlaylist, sourcesFor } = require('./lib/live');
-const { parseM3U, matchChannels, normalize } = require('./lib/m3u');
+const { parseM3U, matchChannels, normalize, dinTvgId, calitateaDin } = require('./lib/m3u');
 const font = require('./lib/font');
 const { wrapToWidth } = require('./lib/poster');
 
@@ -311,6 +311,63 @@ test('extragerea fluxului din pagina oficială', () => {
     scripturiCandidate('<script src="/js/analytics.js"></script><script src="/js/hls-player.js"></script>',
       'https://post.ro/'),
     ['https://post.ro/js/hls-player.js']);
+});
+
+test('playlistul iptv-org se citește corect', () => {
+  // atributul http-user-agent conține virgule: "(KHTML, like Gecko)".
+  // Numele trebuie luat după ULTIMA virgulă, altfel iese tăiat.
+  const linie = '#EXTINF:-1 tvg-id="AMCEurope.uk@Romania" http-referrer="https://cool-tv.net/" ' +
+    'http-user-agent="Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130" ' +
+    'group-title="Movies",AMC Europe Romania';
+  const [intrare] = parseM3U(linie + '\nhttps://cdn.ro/amc.m3u8');
+  assert.equal(intrare.nume, 'AMC Europe Romania', 'numele nu trebuie tăiat de virgula din user-agent');
+  assert.equal(intrare.referer, 'https://cool-tv.net/');
+  assert.match(intrare.userAgent, /^Mozilla\/5\.0/);
+  assert.match(intrare.userAgent, /KHTML, like Gecko/);
+
+  // opțiunile pot veni și pe linii #EXTVLCOPT, sub #EXTINF
+  const [vlc] = parseM3U([
+    '#EXTINF:-1 tvg-id="X.ro",Post X',
+    '#EXTVLCOPT:http-referrer=https://x.ro/',
+    '#EXTVLCOPT:http-user-agent=VLC/3.0.18 (KHTML, like Gecko)',
+    'https://x.ro/live.m3u8'
+  ].join('\n'));
+  assert.equal(vlc.referer, 'https://x.ro/');
+  assert.equal(vlc.userAgent, 'VLC/3.0.18 (KHTML, like Gecko)');
+
+  // calitatea se ia din paranteze
+  assert.equal(calitateaDin('Atomic TV (360p)'), '360P');
+  assert.equal(calitateaDin('Kanal D2 (1080i)'), '1080I');
+  assert.equal(calitateaDin('Columna TV'), null);
+
+  // marcajele din nume
+  const [n24] = parseM3U('#EXTINF:-1,Nasul TV (720p) [Not 24/7]\nhttps://a.ro/b.m3u8');
+  assert.equal(n24.non24, true);
+});
+
+test('tvg-id-ul iptv-org se potrivește cu posturile', () => {
+  assert.equal(normalize(dinTvgId('TVR1.ro@SD')), 'tvr 1');
+  assert.equal(normalize(dinTvgId('AtomicTV.ro')), 'atomic tv');
+  assert.equal(normalize(dinTvgId('RealitateaPlus.ro')), 'realitatea plus');
+
+  const intrari = parseM3U([
+    '#EXTM3U',
+    '#EXTINF:-1 tvg-id="TVR1.ro@SD" group-title="General",TVR 1',
+    'https://tvr-1.lg.mncdn.com/tvr1/smil:tvr1.smil/playlist.m3u8',
+    '#EXTINF:-1 tvg-id="A7TV.ro@SD",A7TV (1080p)',
+    'https://a7.ro/live.m3u8',
+    '#EXTINF:-1 tvg-id="KanalD2.ro",Kanal D2 (1080i)',
+    'https://kd2.ro/live.m3u8',
+    '#EXTINF:-1 tvg-id="AXNBlack.ro",AXN Black Romania',
+    'https://axn.ro/live.m3u8'
+  ].join('\n'));
+
+  const potriviri = matchChannels(intrari, channels);
+  assert.ok(potriviri['tvr-1'], 'TVR 1 prin tvg-id');
+  assert.ok(potriviri['a7-tv'], 'A7TV trebuie potrivit cu A7 TV');
+  assert.ok(potriviri['kanal-d2'], 'Kanal D2 prin tvg-id');
+  assert.ok(!potriviri['axn-black'], 'posturile care nu sunt în catalog rămân afară');
+  assert.equal(potriviri['a7-tv'][0].calitate, '1080P');
 });
 
 test('pagina de verificare și lista surselor', async () => {
