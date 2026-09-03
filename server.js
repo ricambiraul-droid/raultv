@@ -10,7 +10,7 @@ const live = require('./lib/live');
 const m3u = require('./lib/m3u');
 
 const PORT = Number(process.env.PORT || 7000);
-const VERSION = '3.2.0';
+const VERSION = '3.2.1';
 const PAGE_SIZE = 100;
 const POSTER_SIZE = Number(process.env.RAULTV_POSTER_SIZE || 512);
 
@@ -534,7 +534,7 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:.8rem;color:#7b91af;word
 .nota{border-left:3px solid #22395a;padding-left:14px;color:#a7bcd7;font-size:.9rem;margin:22px 0 0}
 </style>
 <h1>Verificare fluxuri</h1>
-<p class="sub">Testele rulează aici, în browserul tău. Serverul e în Frankfurt, iar multe posturi românești sunt restricționate geografic — un test făcut de server ar da alt rezultat decât realitatea de la tine.</p>
+<p class="sub">Testele rulează aici, în browserul tău. Serverul e în Frankfurt, iar multe posturi românești sunt restricționate geografic — un test făcut de server ar da alt rezultat decât realitatea de la tine.</p>\n<p class="sub">Galben nu înseamnă stricat: multe CDN-uri nu trimit antete CORS, deci browserul nu poate citi playlistul chiar dacă fluxul merge. Confirmarea finală o dă tot Stremio.</p>
 <button id="start">Pornește verificarea</button>
 <p class="sumar" id="sumar"></p>
 <table id="t"><thead><tr><th>Canal</th><th>Stare</th><th>Rezoluții</th><th>Sursă</th></tr></thead><tbody></tbody></table>
@@ -563,34 +563,68 @@ function numaraRezolutii(text) {
   return rez.length ? rez.join(', ') : potriviri.length + ' variante';
 }
 
+// Multe CDN-uri nu trimit antete CORS, deci browserul nu poate citi răspunsul
+// chiar dacă fluxul e viu. De aceea încercăm de două ori: întâi normal, ca să
+// vedem status și rezoluții, apoi în mod no-cors, care nu ne lasă să citim
+// nimic, dar ne spune dacă gazda răspunde. Fără al doilea pas, un flux perfect
+// funcțional ar apărea ca mort.
 async function testeaza(tr, sursa) {
   var stare = tr.querySelector('.st');
   var rez = tr.querySelector('.rez');
-  var control = new AbortController();
-  var timer = setTimeout(function () { control.abort(); }, 12000);
+
+  function cuTimp(optiuni) {
+    var control = new AbortController();
+    var timer = setTimeout(function () { control.abort(); }, 12000);
+    optiuni.signal = control.signal;
+    optiuni.cache = 'no-store';
+    return fetch(sursa.url, optiuni).finally(function () { clearTimeout(timer); });
+  }
+
   try {
-    var raspuns = await fetch(sursa.url, { signal: control.signal, cache: 'no-store' });
-    clearTimeout(timer);
+    var raspuns = await cuTimp({});
     if (!raspuns.ok) {
       stare.className = 'st rau';
       stare.textContent = 'HTTP ' + raspuns.status;
-      return false;
+      rez.textContent = raspuns.status === 403 ? 'refuzat — poate cere Referer' :
+                        raspuns.status === 404 ? 'adresa nu mai există' : '—';
+      return 'rau';
     }
     var text = await raspuns.text();
     if (text.indexOf('#EXTM3U') !== 0) {
       stare.className = 'st rau';
       stare.textContent = 'nu e playlist';
-      return false;
+      return 'rau';
     }
     stare.className = 'st ok';
     stare.textContent = 'merge';
     rez.textContent = numaraRezolutii(text);
-    return true;
+    return 'ok';
   } catch (eroare) {
-    clearTimeout(timer);
-    stare.className = 'st rau';
-    stare.textContent = eroare.name === 'AbortError' ? 'expirat' : 'blocat sau mort';
-    return false;
+    if (eroare.name === 'AbortError') {
+      stare.className = 'st rau';
+      stare.textContent = 'expirat';
+      return 'rau';
+    }
+
+    // pagina e pe https, deci browserul refuză din start orice sursă http://
+    if (sursa.url.indexOf('http://') === 0) {
+      stare.className = 'st astept';
+      stare.textContent = 'http, netestabil';
+      rez.textContent = 'browserul blochează; în Stremio poate merge';
+      return 'incert';
+    }
+
+    try {
+      await cuTimp({ mode: 'no-cors' });
+      stare.className = 'st astept';
+      stare.textContent = 'răspunde';
+      rez.textContent = 'CORS nu lasă citirea — probabil viu';
+      return 'incert';
+    } catch (alta) {
+      stare.className = 'st rau';
+      stare.textContent = 'nu răspunde';
+      return 'rau';
+    }
   }
 }
 
@@ -606,13 +640,15 @@ buton.addEventListener('click', async function () {
   });
 
   sumar.textContent = 'Se testează ' + randuri.length + ' surse…';
-  var bune = 0;
+  var bune = 0, incerte = 0, rele = 0;
   for (var i = 0; i < randuri.length; i++) {
-    if (await testeaza(randuri[i].tr, randuri[i].sursa)) bune++;
-    sumar.textContent = (i + 1) + ' din ' + randuri.length + ' testate · ' + bune + ' funcționale';
+    var stare = await testeaza(randuri[i].tr, randuri[i].sursa);
+    if (stare === 'ok') bune++; else if (stare === 'incert') incerte++; else rele++;
+    sumar.textContent = (i + 1) + ' din ' + randuri.length + ' testate';
   }
 
-  sumar.textContent = 'Gata: ' + bune + ' din ' + randuri.length + ' surse funcționează.';
+  sumar.textContent = 'Gata: ' + bune + ' confirmate, ' + incerte +
+    ' probabil bune, ' + rele + ' moarte.';
   document.getElementById('nota').textContent =
     'Restul de ' + date.faraFlux + ' canale nu au flux configurat și deschid pagina oficială. ' +
     'Ca să adaugi unul, pune-l în surse.js sau într-o variabilă RAULTV_<SLUG>_URL în Render.';
