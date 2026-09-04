@@ -27,7 +27,7 @@ function manifest(ctx = {}) {
     version: VERSION,
     name: 'RaulTV FULL TiviOne' + eticheta,
     description: 'RaulTV v17 • Live TV din toate tarile + Filme/VOD + Seriale • multi-device, potrivire IMDB pentru subtitrari',
-    logo: (ctx.base || '') + '/poster.png?n=RaulTV',
+    logo: 'https://raw.githubusercontent.com/ricambiraul-droid/raultv/main/public/raultv-logo.png',
     resources: ['catalog', 'meta', 'stream'],
     types: ['tv', 'movie', 'series'],
     idPrefixes: ['raultv:', 'tivione:movie:', 'tivione:series:', 'tivione:episode:', 'tt'],
