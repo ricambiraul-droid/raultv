@@ -5,12 +5,45 @@ services:
     plan: free
     buildCommand: npm ci || npm install
     startCommand: npm start
-    healthCheckPath: /manifest.json
+    healthCheckPath: /health
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: 20
+      # Cat timp tinem in memorie listele de canale, filme si seriale.
       - key: CACHE_MS
-        value: 600000
+        value: 1800000
       - key: FETCH_TIMEOUT
-        value: 12000
+        value: 15000
+      - key: FETCH_TIMEOUT_BIG
+        value: 60000
+      # Cate sloturi de dispozitiv exista (30 minim, 100 implicit, 200 maxim).
+      - key: RAULTV_DEVICE_SLOTS
+        value: 100
+      # Cereri pe minut acceptate de la un dispozitiv.
+      - key: RATE_LIMIT
+        value: 240
+      # --- valori secrete: se completeaza in Render, niciodata in repository ---
+      - key: TIVIONE_XTREAM_SERVER
+        sync: false
+      - key: TIVIONE_XTREAM_USERNAME
+        sync: false
+      - key: TIVIONE_XTREAM_PASSWORD
+        sync: false
+      # Limita de conexiuni simultane a contului; serverul nu o depaseste.
+      - key: TIVIONE_MAX_CONNECTIONS
+        sync: false
+      # Cheia panoului de administrare (/admin?key=…).
+      - key: ADMIN_TOKEN
+        sync: false
+      # Secret pentru token-urile dispozitivelor. Daca il schimbi, toate
+      # adresele de instalare se schimba si trebuie reinstalat addonul.
+      - key: RAULTV_SECRET
+        sync: false
+      # Conturi Xtream suplimentare, ca sa poti da conturi diferite pe dispozitive:
+      # {"copii":{"label":"Cont copii","server":"http://…","username":"…","password":"…","maxConnections":1}}
+      - key: XTREAM_ACCOUNTS
+        sync: false
+      # Starea dispozitivelor, fixata permanent (se exporta din panou).
+      - key: RAULTV_DEVICES
+        sync: false
