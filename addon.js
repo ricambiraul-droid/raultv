@@ -1,105 +1,29 @@
-const { addonBuilder } = require("stremio-addon-sdk");
-const axios = require("axios");
-
-const SOURCES = [
-  {name:"HMLendea RO", url:"https://raw.githubusercontent.com/hmlendea/iptv-playlist/master/ro.m3u", priority:20},
-  {name:"IPTV-org RO", url:"https://iptv-org.github.io/iptv/countries/ro.m3u", priority:10}
+const { addonBuilder } = require('stremio-addon-sdk');
+const axios = require('axios');
+const CACHE_MS=Number(process.env.CACHE_MS||30*60*1000), TIMEOUT=Number(process.env.FETCH_TIMEOUT||15000);
+const PUBLIC=[
+ {name:'HMLendea RO',url:'https://raw.githubusercontent.com/hmlendea/iptv-playlist/master/ro.m3u',priority:20,provider:'Public',country:'ro'},
+ {name:'IPTV-org RO',url:'https://iptv-org.github.io/iptv/countries/ro.m3u',priority:10,provider:'Public',country:'ro'}
 ];
-const CACHE_MS = Number(process.env.CACHE_MS || 10*60*1000);
-const TIMEOUT = Number(process.env.FETCH_TIMEOUT || 8000);
-
-const manifest = {
-  id:"ro.raultv.tv.v14_1", version:"14.1.0", name:"RaulTV",
-  description:"RaulTV v14.1 • Live TV România • catalog tolerant la timeout • servere fallback",
-  resources:["catalog","meta","stream"], types:["tv"], idPrefixes:["raultv:"],
-  catalogs:[
-    {type:"tv",id:"all",name:"RaulTV • Toate",extra:[{name:"search",isRequired:false}]},
-    {type:"tv",id:"news",name:"RaulTV • Știri"},
-    {type:"tv",id:"sport",name:"RaulTV • Sport"},
-    {type:"tv",id:"documentary",name:"RaulTV • Documentare"},
-    {type:"tv",id:"kids",name:"RaulTV • Copii"},
-    {type:"tv",id:"music",name:"RaulTV • Muzică"},
-    {type:"tv",id:"local",name:"RaulTV • Locale"},
-    {type:"tv",id:"general",name:"RaulTV • General"}
-  ]
-};
-const builder = new addonBuilder(manifest);
-let cache={at:0,channels:[]}, loading=null;
-
-const clean=s=>(s||"").replace(/^RO:\s*/i,"").replace(/\s+/g," ").trim();
-const canonical=s=>clean(s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
- .replace(/\b(uhd|fhd|hd|sd|4k|2160p?|1080p?|720p?|576p?|480p?)\b/g," ")
- .replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim();
-const slug=s=>canonical(s).replace(/\s+/g,"-")||"channel";
+const manifest={id:'ro.raultv.live',version:'15.6.0',name:'RaulTV FULL TiviOne',description:'RaulTV v15.6 • Live TV + TiviOne Filme/VOD + Seriale • SAFE single-playback',resources:['catalog','meta','stream'],types:['tv','movie','series'],idPrefixes:['raultv:','tivione:movie:','tivione:series:','tivione:episode:'],catalogs:[
+ {type:'tv',id:'all',name:'📺 RaulTV • Toate',extra:[{name:'search',isRequired:false}]},{type:'tv',id:'ro',name:'🇷🇴 RaulTV • România',extra:[{name:'search',isRequired:false}]},{type:'tv',id:'it',name:'🇮🇹 RaulTV • Italia',extra:[{name:'search',isRequired:false}]},
+ {type:'movie',id:'tivione-movies',name:'🎬 TiviOne • Filme',extra:[{name:'search',isRequired:false},{name:'skip',isRequired:false}]},
+ {type:'series',id:'tivione-series',name:'📺 TiviOne • Seriale',extra:[{name:'search',isRequired:false},{name:'skip',isRequired:false}]}
+]};
+const builder=new addonBuilder(manifest); let tvCache={at:0,rows:[]},vodCache={at:0,rows:[]},seriesCache={at:0,rows:[]}; const seriesInfo=new Map();
+const clean=s=>(s||'').replace(/^(RO|IT)[\s:|_-]+/i,'').replace(/\s+/g,' ').trim();
+const canonical=s=>clean(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\b(uhd|fhd|hd|sd|4k|8k|2160p?|1080p?|720p?)\b/g,' ').replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
+const slug=s=>canonical(s).replace(/\s+/g,'-')||'item';
 function attrs(s){const o={};for(const m of s.matchAll(/([\w-]+)="([^"]*)"/g))o[m[1]]=m[2];return o}
-function cat(name,declared=""){
- const t=(name+" "+declared).toLowerCase();
- if(/documentar|history|discovery|nature|natura|travel|animal/.test(t))return"documentary";
- if(/copii|kids|junior|cartoon|desene|nick|minimax/.test(t))return"kids";
- if(/sport|fotbal|football/.test(t))return"sport";
- if(/digi24|realitatea|romania tv|românia tv|euronews|news|stiri|știri|aleph/.test(t))return"news";
- if(/music|muzic|kiss|magic|rock|atomic|mooz|dance|trace|manele/.test(t))return"music";
- if(/local|regional|arad|cluj|iasi|iași|buzau|buzău|craiova|timisoara|timișoara|mures|mureș|suceava|constanta|constanța|arges|argeș/.test(t))return"local";
- return"general";
-}
-function parse(text,src){
- const out=[];let info=null,extgrp="";
- for(const raw of String(text).split(/\r?\n/)){
-  const line=raw.trim();
-  if(line.startsWith("#EXTGRP:")){extgrp=line.slice(8).trim();continue}
-  if(line.startsWith("#EXTINF")){
-   const a=attrs(line), comma=line.indexOf(",");
-   info={name:clean(comma>=0?line.slice(comma+1):a["tvg-name"]||"Canal"),logo:a["tvg-logo"]||"",group:a["group-title"]||extgrp||""};
-   extgrp=""; continue;
-  }
-  if(info && /^https?:\/\//i.test(line)){
-   out.push({id:slug(info.name),key:canonical(info.name),name:info.name,logo:info.logo,
-    group:cat(info.name,info.group),declaredGroup:info.group,url:line,source:src.name,priority:src.priority});
-   info=null;
-  }
- }
- return out;
-}
-async function fetchSource(src){
- try{
-  const r=await axios.get(src.url,{timeout:TIMEOUT,responseType:"text",maxRedirects:5,
-   headers:{"User-Agent":"Mozilla/5.0 RaulTV/14.1"}});
-  return parse(r.data,src);
- }catch(e){console.error(`[RaulTV] ${src.name}: ${e.message}`);return[]}
-}
-async function refresh(){
- const rows=(await Promise.all(SOURCES.map(fetchSource))).flat();
- const map=new Map();
- for(const x of rows){
-  if(!x.key)continue;
-  if(!map.has(x.key))map.set(x.key,{id:x.id,name:x.name,logo:x.logo,group:x.group,declaredGroup:x.declaredGroup,servers:[]});
-  const c=map.get(x.key);
-  if(!c.logo&&x.logo)c.logo=x.logo;
-  if(!c.servers.some(s=>s.url===x.url))c.servers.push(x);
- }
- // v14.1: NU eliminăm canalul pentru că un probe/timeout a eșuat.
- const channels=[...map.values()].filter(c=>c.servers.length).sort((a,b)=>a.name.localeCompare(b.name,"ro"));
- if(channels.length) cache={at:Date.now(),channels};
- console.log(`[RaulTV] catalog: ${channels.length} canale`);
- return channels.length?channels:cache.channels;
-}
-async function load(){
- if(cache.channels.length && Date.now()-cache.at<CACHE_MS)return cache.channels;
- if(!loading)loading=refresh().finally(()=>loading=null);
- return await loading;
-}
-function meta(c){return{id:"raultv:"+c.id,type:"tv",name:c.name,poster:c.logo||undefined,posterShape:"square",
- description:`${c.servers.length} server(e) • ${c.declaredGroup||c.group}`}}
-builder.defineCatalogHandler(async args=>{
- let c=await load(); if(args.id!=="all")c=c.filter(x=>x.group===args.id);
- const q=(args.extra?.search||"").toLowerCase().trim(); if(q)c=c.filter(x=>x.name.toLowerCase().includes(q));
- return{metas:c.map(meta)};
-});
-builder.defineMetaHandler(async({id})=>{const c=(await load()).find(x=>"raultv:"+x.id===id);return{meta:c?meta(c):null}});
-builder.defineStreamHandler(async({id})=>{
- const c=(await load()).find(x=>"raultv:"+x.id===id); if(!c)return{streams:[]};
- const servers=[...c.servers].sort((a,b)=>b.priority-a.priority);
- return{streams:servers.map((s,i)=>({name:`RaulTV • Server ${i+1}`,title:`${c.name} • ${s.source}`,url:s.url,
-  behaviorHints:{notWebReady:false}}))};
-});
+function country(n,g='',fb=''){const t=(n+' '+g).toLowerCase();if(/(^|[\s|:_-])(it|italia|italy)([\s|:_-]|$)|\brai\b|mediaset|canale 5|italia 1|rete 4|\bla7\b/.test(t))return'it';if(/(^|[\s|:_-])(ro|romania|românia)([\s|:_-]|$)|digi|pro tv|antena|prima tv|tvr|kanal d|realitatea/.test(t))return'ro';return fb}
+function cfg(){return{base:(process.env.TIVIONE_XTREAM_SERVER||'').replace(/\/+$/,''),username:process.env.TIVIONE_XTREAM_USERNAME||'',password:process.env.TIVIONE_XTREAM_PASSWORD||''}}
+async function api(action,extra={}){const c=cfg();if(!c.base||!c.username||!c.password)throw new Error('TiviOne not configured');return (await axios.get(c.base+'/player_api.php',{params:{username:c.username,password:c.password,...(action?{action}:{}),...extra},timeout:TIMEOUT,headers:{'User-Agent':'RaulTV/15.6'}})).data}
+function parseM3U(text,src){let info=null,out=[];for(const raw of String(text).split(/\r?\n/)){const l=raw.trim();if(l.startsWith('#EXTINF')){const a=attrs(l),i=l.indexOf(',');info={name:clean(i>=0?l.slice(i+1):a['tvg-name']||'Canal'),logo:a['tvg-logo']||'',group:a['group-title']||''};continue}if(info&&/^https?:\/\//i.test(l)){out.push({key:canonical(info.name),id:slug(info.name),name:info.name,logo:info.logo,country:country(info.name,info.group,src.country||'ro'),url:l,provider:src.provider,source:src.name,priority:src.priority});info=null}}return out}
+async function loadTV(){if(tvCache.rows.length&&Date.now()-tvCache.at<CACHE_MS)return tvCache.rows;let rows=[];for(const s of PUBLIC){try{rows.push(...parseM3U((await axios.get(s.url,{timeout:TIMEOUT})).data,s))}catch(e){console.error(s.name,e.message)}}const c=cfg();if(c.base&&c.username&&c.password){try{const cats=await api('get_live_categories');for(const cat of (Array.isArray(cats)?cats:[])){const co=country('',cat.category_name||'','');if(!['ro','it'].includes(co))continue;const streams=await api('get_live_streams',{category_id:cat.category_id});for(const x of (Array.isArray(streams)?streams:[])){const name=clean(x.name||'Canal'),ext=(x.container_extension||'ts').replace(/[^a-z0-9]/gi,'');rows.push({key:canonical(name),id:slug(name),name,logo:x.stream_icon||'',country:country(name,cat.category_name||'',co),url:`${c.base}/live/${encodeURIComponent(c.username)}/${encodeURIComponent(c.password)}/${x.stream_id}.${ext}`,provider:'TiviOne',source:'TiviOne Xtream',priority:120})}}}catch(e){console.error('Xtream live',e.message)}}const m=new Map();for(const x of rows){if(!x.key)continue;if(!m.has(x.key))m.set(x.key,{...x,servers:[]});const z=m.get(x.key);if(!z.servers.some(s=>s.url===x.url))z.servers.push(x)}tvCache={at:Date.now(),rows:[...m.values()].sort((a,b)=>a.name.localeCompare(b.name))};return tvCache.rows}
+async function loadVod(){if(vodCache.rows.length&&Date.now()-vodCache.at<CACHE_MS)return vodCache.rows;let rows=[];try{const data=await api('get_vod_streams');rows=(Array.isArray(data)?data:[]).map(x=>({id:String(x.stream_id),name:clean(x.name||'Film'),poster:x.stream_icon||'',rating:x.rating||'',year:x.year||'',category:String(x.category_id||''),ext:(x.container_extension||'mp4').replace(/[^a-z0-9]/gi,'')||'mp4'}))}catch(e){console.error('Xtream VOD',e.message)}vodCache={at:Date.now(),rows};return rows}
+async function loadSeries(){if(seriesCache.rows.length&&Date.now()-seriesCache.at<CACHE_MS)return seriesCache.rows;let rows=[];try{const data=await api('get_series');rows=(Array.isArray(data)?data:[]).map(x=>({id:String(x.series_id),name:clean(x.name||'Serial'),poster:x.cover||'',rating:x.rating||'',year:x.releaseDate||x.year||'',category:String(x.category_id||''),plot:x.plot||''}))}catch(e){console.error('Xtream series',e.message)}seriesCache={at:Date.now(),rows};return rows}
+function page(rows,args){const q=(args.extra?.search||'').toLowerCase().trim();if(q)rows=rows.filter(x=>x.name.toLowerCase().includes(q));const skip=Math.max(0,Number(args.extra?.skip||0));return rows.slice(skip,skip+100)}
+builder.defineCatalogHandler(async args=>{if(args.type==='movie'&&args.id==='tivione-movies')return{metas:page(await loadVod(),args).map(x=>({id:'tivione:movie:'+x.id,type:'movie',name:x.name,poster:x.poster||undefined,description:[x.year,x.rating&&('⭐ '+x.rating)].filter(Boolean).join(' • ')}))};if(args.type==='series'&&args.id==='tivione-series')return{metas:page(await loadSeries(),args).map(x=>({id:'tivione:series:'+x.id,type:'series',name:x.name,poster:x.poster||undefined,description:x.plot||[x.year,x.rating].filter(Boolean).join(' • ')}))};let rows=await loadTV();if(args.id==='ro'||args.id==='it')rows=rows.filter(x=>x.country===args.id);const q=(args.extra?.search||'').toLowerCase().trim();if(q)rows=rows.filter(x=>x.name.toLowerCase().includes(q));return{metas:rows.map(x=>({id:'raultv:'+x.id,type:'tv',name:x.name,poster:x.logo||undefined,posterShape:'square',description:`${x.servers.length} server(e) • ${x.country.toUpperCase()}`}))}});
+builder.defineMetaHandler(async({type,id})=>{if(type==='movie'&&id.startsWith('tivione:movie:')){const x=(await loadVod()).find(v=>id==='tivione:movie:'+v.id);return{meta:x?{id,type:'movie',name:x.name,poster:x.poster||undefined,description:[x.year,x.rating&&('⭐ '+x.rating)].filter(Boolean).join(' • ')}:null}}if(type==='series'&&id.startsWith('tivione:series:')){const sid=id.split(':').pop();let info=seriesInfo.get(sid);if(!info||Date.now()-info.at>CACHE_MS){try{info={at:Date.now(),data:await api('get_series_info',{series_id:sid})};seriesInfo.set(sid,info)}catch(e){return{meta:null}}}const d=info.data||{},base=(await loadSeries()).find(x=>x.id===sid)||{};const videos=[];const eps=d.episodes||{};for(const [season,arr] of Object.entries(eps))for(const e of (Array.isArray(arr)?arr:[]))videos.push({id:`tivione:episode:${e.id}:${(e.container_extension||'mp4').replace(/[^a-z0-9]/gi,'')}`,title:e.title||`Episod ${e.episode_num||''}`,season:Number(season)||1,episode:Number(e.episode_num)||1,released:e.info?.releasedate?new Date(e.info.releasedate):undefined});return{meta:{id,type:'series',name:d.info?.name||base.name||'Serial',poster:d.info?.cover||base.poster||undefined,background:d.info?.backdrop_path?.[0]||undefined,description:d.info?.plot||base.plot||'',videos}}}if(type==='tv'){const x=(await loadTV()).find(v=>id==='raultv:'+v.id);return{meta:x?{id,type:'tv',name:x.name,poster:x.logo||undefined,posterShape:'square',description:`${x.servers.length} server(e)`}:null}}return{meta:null}});
+builder.defineStreamHandler(async({type,id})=>{const c=cfg();if(type==='movie'&&id.startsWith('tivione:movie:')){const sid=id.split(':').pop(),x=(await loadVod()).find(v=>v.id===sid);if(!x||!c.base)return{streams:[]};return{streams:[{name:'TiviOne • Film',title:x.name,url:`${c.base}/movie/${encodeURIComponent(c.username)}/${encodeURIComponent(c.password)}/${x.id}.${x.ext}`,behaviorHints:{notWebReady:false}}]}}if(type==='series'&&id.startsWith('tivione:episode:')){const p=id.split(':'),eid=p[2],ext=(p[3]||'mp4').replace(/[^a-z0-9]/gi,'');return{streams:[{name:'TiviOne • Episod',url:`${c.base}/series/${encodeURIComponent(c.username)}/${encodeURIComponent(c.password)}/${eid}.${ext}`,behaviorHints:{notWebReady:false}}]}}if(type==='tv'){const x=(await loadTV()).find(v=>id==='raultv:'+v.id);if(!x)return{streams:[]};return{streams:[...x.servers].sort((a,b)=>b.priority-a.priority).map((s,i)=>({name:`RaulTV • Server ${i+1}${s.provider==='TiviOne'?' • TiviOne':''}`,title:x.name,url:s.url,behaviorHints:{notWebReady:false}}))}}return{streams:[]}});
 module.exports=builder.getInterface();
