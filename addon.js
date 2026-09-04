@@ -17,9 +17,9 @@ const VOD_GENRES = ['IT', 'EN', 'FR', 'DE', 'ES', 'PT', 'NL', 'PL', 'GR', 'TR', 
 
 const manifest = {
   id: 'ro.raultv.live',
-  version: '15.8.0',
+  version: '15.9.0',
   name: 'RaulTV FULL TiviOne',
-  description: 'RaulTV v15.8 • Live TV din toate tarile + TiviOne Filme/VOD + Seriale • potrivire IMDB pentru subtitrari',
+  description: 'RaulTV v15.9 • Live TV din toate tarile + TiviOne Filme/VOD + Seriale • HLS + TS pe fiecare canal',
   resources: ['catalog', 'meta', 'stream'],
   types: ['tv', 'movie', 'series'],
   idPrefixes: ['raultv:', 'tivione:movie:', 'tivione:series:', 'tivione:episode:', 'tt'],
@@ -386,12 +386,22 @@ builder.defineStreamHandler(async ({ type, id }) => {
   if (type === 'tv') {
     const x = (await loadTV()).byId.get(id);
     if (!x) return { streams: [] };
-    return {
-      streams: [...x.servers].sort((a, b) => b.priority - a.priority).map((s, i) => ({
-        name: `RaulTV • Server ${i + 1}${s.provider === 'TiviOne' ? ' • TiviOne' : ''}`,
-        title: x.name, url: s.url, behaviorHints: { notWebReady: false }
-      }))
-    };
+    // Pentru fiecare sursa TiviOne dam doua variante: HLS (.m3u8) si fluxul brut
+    // (.ts). Playerele de pe televizor digera de obicei doar HLS, iar cele de pe
+    // PC merg cu ambele — asa ai mereu o alternativa daca una se blocheaza.
+    const out = [];
+    let n = 0;
+    for (const s of [...x.servers].sort((a, b) => b.priority - a.priority)) {
+      n++;
+      if (s.provider === 'TiviOne') {
+        const stem = s.url.replace(/\.[a-z0-9]+$/i, '');
+        out.push({ name: `RaulTV • Server ${n} • TiviOne HLS`, title: x.name, url: stem + '.m3u8', behaviorHints: { notWebReady: false } });
+        out.push({ name: `RaulTV • Server ${n} • TiviOne TS`, title: x.name, url: stem + '.ts', behaviorHints: { notWebReady: false } });
+      } else {
+        out.push({ name: `RaulTV • Server ${n} • ${s.source || 'Public'}`, title: x.name, url: s.url, behaviorHints: { notWebReady: false } });
+      }
+    }
+    return { streams: out };
   }
   return { streams: [] };
 });
