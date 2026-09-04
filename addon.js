@@ -17,9 +17,9 @@ const VOD_GENRES = ['IT', 'EN', 'FR', 'DE', 'ES', 'PT', 'NL', 'PL', 'GR', 'TR', 
 
 const manifest = {
   id: 'ro.raultv.live',
-  version: '15.9.0',
+  version: '16.0.0',
   name: 'RaulTV FULL TiviOne',
-  description: 'RaulTV v15.9 • Live TV din toate tarile + TiviOne Filme/VOD + Seriale • HLS + TS pe fiecare canal',
+  description: 'RaulTV v16.0 • Live TV din toate tarile • surse unificate pe canal (TiviOne + playlisturi publice) • HLS + TS',
   resources: ['catalog', 'meta', 'stream'],
   types: ['tv', 'movie', 'series'],
   idPrefixes: ['raultv:', 'tivione:movie:', 'tivione:series:', 'tivione:episode:', 'tt'],
@@ -50,6 +50,11 @@ const canonical = s => String(s || '').toLowerCase().normalize('NFD').replace(/[
   .replace(/\b(uhd|fhd|hd|sd|4k|8k|2160p?|1080p?|720p?)\b/g, ' ')
   .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 const slug = s => canonical(s).replace(/\s+/g, '-') || 'item';
+
+// Cheia de unificare a canalelor: „A7 TV", „A7TV" si „Agro TV (360p) [Not 24/7]"
+// trebuie sa fie acelasi canal cu mai multe surse, nu trei intrari separate.
+const tidy = s => String(s || '').replace(/[\(\[][^\)\]]*[\)\]]/g, ' ').replace(/\s+/g, ' ').trim();
+const mergeKey = s => canonical(tidy(s)).replace(/\s+/g, '');
 
 function attrs(s) { const o = {}; for (const m of s.matchAll(/([\w-]+)="([^"]*)"/g)) o[m[1]] = m[2]; return o; }
 
@@ -121,12 +126,14 @@ async function loadTV() {
 
   const m = new Map();
   for (const x of rows) {
-    const key = canonical(x.name);
+    const key = mergeKey(x.name);
     if (!key) continue;
     const tag = x.tag || 'RO';
-    const id = 'raultv:' + tag.toLowerCase().replace(/\s+/g, '-') + ':' + slug(x.name);
-    if (!m.has(id)) m.set(id, { id, tag, name: x.name, logo: x.logo, servers: [] });
+    const id = 'raultv:' + tag.toLowerCase().replace(/\s+/g, '-') + ':' + key;
+    const nice = tidy(x.name) || x.name;
+    if (!m.has(id)) m.set(id, { id, tag, name: nice, logo: x.logo, servers: [] });
     const z = m.get(id);
+    if (nice && nice.length < z.name.length) z.name = nice;
     if (!z.logo && x.logo) z.logo = x.logo;
     if (!z.servers.some(s => s.url === x.url)) z.servers.push(x);
   }
