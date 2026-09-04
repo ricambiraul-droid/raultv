@@ -1,6 +1,6 @@
 {
-  "name": "raultv-stremio-tv-v15-6",
-  "version": "15.6.0",
+  "name": "raultv-stremio-multidevice",
+  "version": "17.0.0",
   "private": true,
   "main": "server.js",
   "engines": {
@@ -8,10 +8,8 @@
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check addon.js && node --check server.js"
+    "check": "node --check addon.js && node --check server.js && node --check lib/net.js && node --check lib/guard.js && node --check lib/source.js && node --check lib/devices.js && node --check lib/tile.js",
+    "test": "node test-multidevice.js"
   },
-  "dependencies": {
-    "axios": "^1.7.9",
-    "stremio-addon-sdk": "^1.6.10"
-  }
+  "dependencies": {}
 }
