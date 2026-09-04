@@ -17,12 +17,12 @@ const VOD_GENRES = ['IT', 'EN', 'FR', 'DE', 'ES', 'PT', 'NL', 'PL', 'GR', 'TR', 
 
 const manifest = {
   id: 'ro.raultv.live',
-  version: '15.7.0',
+  version: '15.8.0',
   name: 'RaulTV FULL TiviOne',
-  description: 'RaulTV v15.7 • Live TV din toate tarile + TiviOne Filme/VOD + Seriale • SAFE single-playback',
+  description: 'RaulTV v15.8 • Live TV din toate tarile + TiviOne Filme/VOD + Seriale • potrivire IMDB pentru subtitrari',
   resources: ['catalog', 'meta', 'stream'],
   types: ['tv', 'movie', 'series'],
-  idPrefixes: ['raultv:', 'tivione:movie:', 'tivione:series:', 'tivione:episode:'],
+  idPrefixes: ['raultv:', 'tivione:movie:', 'tivione:series:', 'tivione:episode:', 'tt'],
   catalogs: [
     { type: 'tv', id: 'all', name: '📺 RaulTV • Toate tarile', genres: TV_GENRES, extra: [{ name: 'genre', isRequired: false, options: TV_GENRES }, { name: 'search', isRequired: false }, { name: 'skip', isRequired: false }] },
     { type: 'tv', id: 'ro', name: '🇷🇴 RaulTV • Romania', extra: [{ name: 'search', isRequired: false }, { name: 'skip', isRequired: false }] },
@@ -181,6 +181,86 @@ async function loadSeries() {
   return rows;
 }
 
+
+// ---------------------------------------------------------------------------
+// Potrivirea cu IMDB. Serverul Xtream da doar tmdb_id, iar addon-urile de
+// subtitrari din Stremio (OpenSubtitles etc.) cauta exclusiv dupa id-ul IMDB.
+// Cautam titlul in catalogul public Cinemeta al Stremio si, cand gasim, dam
+// elementului id-ul „tt…" — asa Stremio ii pune metadatele lui si addon-urile
+// de subtitrari il recunosc.
+// ---------------------------------------------------------------------------
+const CINEMETA = 'https://v3-cinemeta.strem.io';
+const IMDB_TIMEOUT = Number(process.env.IMDB_TIMEOUT || 5000);
+const IMDB_CONCURRENCY = Number(process.env.IMDB_CONCURRENCY || 8);
+const imdbCache = new Map();   // "movie|the thing|1982" -> 'tt0084787' | null
+const imdbToVod = new Map();   // 'tt0084787' -> randul din loadVod()
+const imdbToSeries = new Map();
+
+function titleYear(raw) {
+  const s = String(raw || '').trim();
+  const m = s.match(/\((19|20)\d{2}\)\s*$/);
+  const year = m ? Number(m[0].replace(/[()\s]/g, '')) : 0;
+  let title = (m ? s.slice(0, m.index) : s).trim();
+  title = title.replace(/\b(4K|UHD|FHD|HD|SD|1080p?|720p?|2160p?|MULTI|VOSTFR|DUB|SUB)\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ').replace(/[\-–—:|]+\s*$/, '').trim();
+  return { title, year };
+}
+
+async function findImdb(type, rawName) {
+  const { title, year } = titleYear(rawName);
+  if (!title || title.length < 2) return null;
+  const key = type + '|' + canonical(title) + '|' + (year || '');
+  if (imdbCache.has(key)) return imdbCache.get(key);
+  let hit = null;
+  try {
+    const url = `${CINEMETA}/catalog/${type}/top/search=${encodeURIComponent(title)}.json`;
+    const data = (await axios.get(url, { timeout: IMDB_TIMEOUT })).data;
+    const metas = (data && data.metas) || [];
+    const want = canonical(title);
+    let exact = null, loose = null;
+    for (const m of metas) {
+      if (!m || !m.id || !String(m.id).startsWith('tt')) continue;
+      const got = canonical(m.name);
+      const my = Number(String(m.releaseInfo || '').slice(0, 4)) || 0;
+      const yearOk = !year || !my || Math.abs(my - year) <= 1;
+      if (got === want && yearOk) { exact = m.id; break; }
+      if (!loose && got === want) loose = m.id;
+    }
+    hit = exact || loose || null;
+  } catch (e) { hit = null; }
+  imdbCache.set(key, hit);
+  return hit;
+}
+
+// Rezolva un lot de randuri cu paralelism limitat; ce nu se potriveste ramane
+// cu id-ul intern, deci nu se pierde nimic din catalog.
+async function attachImdb(rows, type) {
+  const out = new Array(rows.length);
+  let i = 0;
+  async function worker() {
+    while (i < rows.length) {
+      const k = i++;
+      const row = rows[k];
+      const id = await findImdb(type, row.name);
+      if (id) {
+        if (type === 'movie') imdbToVod.set(id, row); else imdbToSeries.set(id, row);
+      }
+      out[k] = id;
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(IMDB_CONCURRENCY, rows.length) }, worker));
+  return out;
+}
+
+async function seriesInfoOf(sid) {
+  let info = seriesInfo.get(sid);
+  if (!info || Date.now() - info.at > CACHE_MS) {
+    info = { at: Date.now(), data: await api('get_series_info', { series_id: sid }) };
+    seriesInfo.set(sid, info);
+  }
+  return info.data || {};
+}
+
 function page(rows, args) {
   const g = (args.extra && args.extra.genre || '').trim().toUpperCase();
   if (g) rows = rows.filter(x => x.tag === g);
@@ -192,17 +272,21 @@ function page(rows, args) {
 
 builder.defineCatalogHandler(async args => {
   if (args.type === 'movie' && args.id === 'tivione-movies') {
+    const rows = page(await loadVod(), args);
+    const ids = await attachImdb(rows, 'movie');
     return {
-      metas: page(await loadVod(), args).map(x => ({
-        id: 'tivione:movie:' + x.id, type: 'movie', name: x.name, poster: x.poster || undefined,
+      metas: rows.map((x, k) => ({
+        id: ids[k] || ('tivione:movie:' + x.id), type: 'movie', name: x.name, poster: x.poster || undefined,
         description: [x.tag, x.year, x.rating && ('⭐ ' + x.rating)].filter(Boolean).join(' • ')
       }))
     };
   }
   if (args.type === 'series' && args.id === 'tivione-series') {
+    const rows = page(await loadSeries(), args);
+    const ids = await attachImdb(rows, 'series');
     return {
-      metas: page(await loadSeries(), args).map(x => ({
-        id: 'tivione:series:' + x.id, type: 'series', name: x.name, poster: x.poster || undefined,
+      metas: rows.map((x, k) => ({
+        id: ids[k] || ('tivione:series:' + x.id), type: 'series', name: x.name, poster: x.poster || undefined,
         description: x.plot || [x.tag, x.year, x.rating].filter(Boolean).join(' • ')
       }))
     };
@@ -223,6 +307,7 @@ builder.defineCatalogHandler(async args => {
 });
 
 builder.defineMetaHandler(async ({ type, id }) => {
+  if (String(id).startsWith('tt')) return { meta: null }; // metadatele vin de la Cinemeta
   if (type === 'movie' && id.startsWith('tivione:movie:')) {
     const x = (await loadVod()).find(v => id === 'tivione:movie:' + v.id);
     return { meta: x ? { id, type: 'movie', name: x.name, poster: x.poster || undefined, description: [x.tag, x.year, x.rating && ('⭐ ' + x.rating)].filter(Boolean).join(' • ') } : null };
@@ -256,8 +341,37 @@ builder.defineMetaHandler(async ({ type, id }) => {
   return { meta: null };
 });
 
+function vodStream(c, x) {
+  return { name: 'TiviOne • Film', title: x.name, url: `${c.base}/movie/${encodeURIComponent(c.username)}/${encodeURIComponent(c.password)}/${x.id}.${x.ext}`, behaviorHints: { notWebReady: false } };
+}
+function epStream(c, eid, ext, title) {
+  return { name: 'TiviOne • Episod', title, url: `${c.base}/series/${encodeURIComponent(c.username)}/${encodeURIComponent(c.password)}/${eid}.${(ext || 'mp4').replace(/[^a-z0-9]/gi, '')}`, behaviorHints: { notWebReady: false } };
+}
+
 builder.defineStreamHandler(async ({ type, id }) => {
   const c = cfg();
+  if (!c.base) return { streams: [] };
+  // „tt0084787" (film) sau „tt0903747:1:2" (episod) — vin de la Cinemeta.
+  if (String(id).startsWith('tt')) {
+    const p = String(id).split(':');
+    if (p.length === 1) {
+      const x = imdbToVod.get(p[0]);
+      return { streams: x ? [vodStream(c, x)] : [] };
+    }
+    const base = imdbToSeries.get(p[0]);
+    if (!base) return { streams: [] };
+    const season = Number(p[1]) || 1, episode = Number(p[2]) || 1;
+    try {
+      const d = await seriesInfoOf(base.id);
+      for (const [sn, arr] of Object.entries(d.episodes || {})) {
+        if ((Number(sn) || 1) !== season) continue;
+        for (const e of (Array.isArray(arr) ? arr : [])) {
+          if ((Number(e.episode_num) || 1) === episode) return { streams: [epStream(c, e.id, e.container_extension, base.name)] };
+        }
+      }
+    } catch (e) { console.error('[RaulTV] series info', e.message); }
+    return { streams: [] };
+  }
   if (type === 'movie' && id.startsWith('tivione:movie:')) {
     const sid = id.split(':').pop();
     const x = (await loadVod()).find(v => v.id === sid);
