@@ -198,6 +198,19 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // ---- tarile gasite efectiv la furnizor ----
+    if (path === '/grupuri') {
+      const acc = devices.getAccount(url.searchParams.get('cont') || 'main');
+      await src.loadTV(acc);
+      const grupuri = src.tvGroups(acc);
+      return json(res, {
+        versiune: addon.VERSION,
+        tari: grupuri.length,
+        canale: grupuri.reduce((n, g) => n + g.canale, 0),
+        grupuri
+      }, { cache: 'public, max-age=300' });
+    }
+
     // ---- diagnostic cont (fara credentiale) ----
     if (path === '/tivione-status') {
       const acc = devices.getAccount(url.searchParams.get('cont') || 'main');
@@ -308,6 +321,15 @@ server.keepAliveTimeout = 65000;
 server.headersTimeout = 70000;
 
 server.listen(PORT, () => {
+  // Incalzim lista de canale in fundal: manifestul are nevoie de tarile reale,
+  // iar prima cerere a utilizatorului prinde cache-ul deja cald.
+  for (const contId of devices.accountIds()) {
+    const acc = devices.getAccount(contId);
+    if (!src.configured(acc)) continue;
+    src.loadTV(acc)
+      .then(() => console.log('[RaulTV] cont ' + contId + ': ' + src.tvTags(acc).length + ' tari disponibile in filtru'))
+      .catch(e => console.error('[RaulTV] incalzire esuata pentru contul ' + contId + ':', e.message));
+  }
   console.log(`[RaulTV] v${addon.VERSION} pornit pe portul ${PORT}`);
   console.log(`[RaulTV] sloturi dispozitiv: ${devices.SLOTS} · conturi: ${devices.accountIds().join(', ')}`);
   console.log(`[RaulTV] panou: ${ADMIN_TOKEN ? 'activ (/admin?key=…)' : 'oprit (lipseste ADMIN_TOKEN)'}`);
