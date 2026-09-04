@@ -106,6 +106,7 @@ code{background:#141b32;padding:2px 6px;border-radius:5px;font-size:12px;word-br
 <main>
 <div class="bar">
   <button class="ghost" onclick="load()">Reimprospateaza</button>
+  <button class="ghost" onclick="exporta()">Copiaza config pentru Render</button>
   <span class="pill" id="p1">—</span><span class="pill" id="p2">—</span><span class="pill" id="p3">—</span>
 </div>
 <table><thead><tr><th>Slot</th><th>Nume</th><th>Cont</th><th>Activ</th><th>Adresa de instalare</th><th>Ultima cerere</th><th></th></tr></thead>
@@ -134,6 +135,12 @@ async function load(){
       +'<td>'+(x.ultimaCerere?new Date(x.ultimaCerere).toLocaleString('ro-RO'):'—')+'</td>'
       +'<td>'+x.cereri+'</td></tr>';
   }).join('');
+}
+async function exporta(){
+  const r = await fetch('/admin/api/export?key='+encodeURIComponent(KEY));
+  const txt = JSON.stringify(await r.json());
+  try { await navigator.clipboard.writeText(txt); document.getElementById('rez').textContent = 'Config copiat. Pune-l in Render → Environment → RAULTV_DEVICES si redeployeaza.'; }
+  catch(e){ prompt('Copiaza textul si pune-l in RAULTV_DEVICES:', txt); }
 }
 async function save(id, patch){
   await fetch('/admin/api/devices?key='+encodeURIComponent(KEY), {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,patch})});
@@ -215,6 +222,12 @@ const server = http.createServer(async (req, res) => {
       if (!ADMIN_TOKEN) return text(res, 'Panoul este oprit. Adauga ADMIN_TOKEN in Render → Environment si redeployeaza.', 503);
       if (!adminOk(url)) return text(res, 'cheie de administrare lipsa sau gresita', 401);
       return text(res, panelHtml(baseUrl(req)), 200, 'text/html; charset=utf-8');
+    }
+
+    // Starea dispozitivelor, gata de pus in RAULTV_DEVICES ca sa reziste la redeploy.
+    if (path === '/admin/api/export') {
+      if (!adminOk(url)) return json(res, { eroare: 'neautorizat' }, { status: 401 });
+      return json(res, devices.exportConfig());
     }
 
     if (path === '/admin/api/devices') {
