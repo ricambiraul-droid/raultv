@@ -17,9 +17,9 @@ const VOD_GENRES = ['IT', 'EN', 'FR', 'DE', 'ES', 'PT', 'NL', 'PL', 'GR', 'TR', 
 
 const manifest = {
   id: 'ro.raultv.live',
-  version: '16.0.0',
+  version: '16.1.0',
   name: 'RaulTV FULL TiviOne',
-  description: 'RaulTV v16.0 • Live TV din toate tarile • surse unificate pe canal (TiviOne + playlisturi publice) • HLS + TS',
+  description: 'RaulTV v16.1 • Live TV din toate tarile • sigle centrate in chenar • surse unificate pe canal • HLS + TS',
   resources: ['catalog', 'meta', 'stream'],
   types: ['tv', 'movie', 'series'],
   idPrefixes: ['raultv:', 'tivione:movie:', 'tivione:series:', 'tivione:episode:', 'tt'],
@@ -50,6 +50,13 @@ const canonical = s => String(s || '').toLowerCase().normalize('NFD').replace(/[
   .replace(/\b(uhd|fhd|hd|sd|4k|8k|2160p?|1080p?|720p?)\b/g, ' ')
   .replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 const slug = s => canonical(s).replace(/\s+/g, '-') || 'item';
+
+// Chenarele sunt generate de serverul nostru: sigla intra micsorata si centrata,
+// iar canalele fara sigla primesc un chenar cu numele scris mare.
+const envBase = String(process.env.PUBLIC_URL || '').trim();
+const POSTER_BASE = /^https?:\/\//.test(envBase) ? envBase.replace(/\/+$/, '') : 'https://raultv.onrender.com';
+const posterFor = (name, logo) => POSTER_BASE + '/poster.png?n=' +
+  encodeURIComponent(String(name || '').slice(0, 60)) + (logo ? '&u=' + encodeURIComponent(logo) : '');
 
 // Cheia de unificare a canalelor: „A7 TV", „A7TV" si „Agro TV (360p) [Not 24/7]"
 // trebuie sa fie acelasi canal cu mai multe surse, nu trei intrari separate.
@@ -307,7 +314,7 @@ builder.defineCatalogHandler(async args => {
   return {
     metas: page(rows, args).map(x => ({
       id: x.id, type: 'tv', name: showTag && x.tag ? `[${x.tag}] ${x.name}` : x.name,
-      poster: x.logo || undefined, posterShape: 'square',
+      poster: posterFor(x.name, x.logo), posterShape: 'square',
       description: `${x.tag} • ${x.servers.length} server(e)`
     }))
   };
@@ -343,7 +350,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
   }
   if (type === 'tv') {
     const x = (await loadTV()).byId.get(id);
-    return { meta: x ? { id, type: 'tv', name: x.name, poster: x.logo || undefined, posterShape: 'square', description: `${x.tag} • ${x.servers.length} server(e)` } : null };
+    return { meta: x ? { id, type: 'tv', name: x.name, poster: posterFor(x.name, x.logo), posterShape: 'square', description: `${x.tag} • ${x.servers.length} server(e)` } : null };
   }
   return { meta: null };
 });
