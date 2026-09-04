@@ -19,6 +19,8 @@ const PAGE = 100;
 // --- manifest -------------------------------------------------------------
 
 function manifest(ctx = {}) {
+  // Lista de tari vine din canalele incarcate efectiv, nu dintr-o lista fixa.
+  const tari = src.tvGenres(ctx.account);
   const eticheta = ctx.device ? ` · ${ctx.device.nume}` : '';
   return {
     id: 'ro.raultv.live' + (ctx.device ? '.' + ctx.device.id : ''),
@@ -31,7 +33,7 @@ function manifest(ctx = {}) {
     idPrefixes: ['raultv:', 'tivione:movie:', 'tivione:series:', 'tivione:episode:', 'tt'],
     behaviorHints: { configurable: false, configurationRequired: false },
     catalogs: [
-      { type: 'tv', id: 'all', name: '📺 RaulTV • Toate tarile', genres: src.TV_GENRES, extra: [{ name: 'genre', isRequired: false, options: src.TV_GENRES }, { name: 'search', isRequired: false }, { name: 'skip', isRequired: false }] },
+      { type: 'tv', id: 'all', name: '📺 RaulTV • Toate tarile', genres: tari, extra: [{ name: 'genre', isRequired: false, options: tari }, { name: 'search', isRequired: false }, { name: 'skip', isRequired: false }] },
       { type: 'tv', id: 'ro', name: '🇷🇴 RaulTV • Romania', extra: [{ name: 'search', isRequired: false }, { name: 'skip', isRequired: false }] },
       { type: 'tv', id: 'it', name: '🇮🇹 RaulTV • Italia', extra: [{ name: 'search', isRequired: false }, { name: 'skip', isRequired: false }] },
       { type: 'movie', id: 'tivione-movies', name: '🎬 TiviOne • Filme', genres: src.VOD_GENRES, extra: [{ name: 'genre', isRequired: false, options: src.VOD_GENRES }, { name: 'search', isRequired: false }, { name: 'skip', isRequired: false }] },
